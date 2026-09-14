@@ -1,0 +1,1211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlyMinecraft Brain</title>
+<style>
+:root {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --s4: #c98500;
+  --s5: #d55181;
+  --s6: #008300;
+  --s7: #9085e9;
+  --s8: #e66767;
+  --good: #0ca30c;
+  --critical: #d03b3b;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.wrap { max-width: 1440px; margin: 0 auto; padding: 20px 16px 40px; }
+
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+h1 { margin: 0; font-size: 22px; font-weight: 600; }
+h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.sub, .card-sub { margin: 2px 0 0; color: var(--ink-2); }
+.card-sub { font-size: 13px; margin-bottom: 12px; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  background: var(--surface); box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--ink-2); font-size: 13px;
+}
+.pill .icon { font-weight: 700; }
+.pill.good .icon { color: var(--good); }
+.pill.critical .icon { color: var(--critical); }
+.pill.muted .icon { color: var(--muted); }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile, .card {
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px var(--border);
+  padding: 14px 16px;
+  min-width: 0;
+}
+.tile-label { color: var(--ink-2); font-size: 13px; }
+.tile-value { font-size: 28px; font-weight: 600; line-height: 1.2; margin-top: 2px; }
+.tile-sub { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.hero-row { display: flex; align-items: center; gap: 12px; }
+.hero-value { font-size: 48px; font-weight: 600; line-height: 1.1; }
+.swatch { width: 14px; height: 14px; border-radius: 4px; background: var(--grid); flex: none; }
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.map-card { grid-column: 1; grid-row: 1 / span 2; }
+.senses-card { grid-column: 2; grid-row: 1; }
+.motor-card { grid-column: 2; grid-row: 2; }
+.history-card { grid-column: 1; grid-row: 3 / span 2; }
+.inputs-card { grid-column: 2; grid-row: 3; }
+.classes-card { grid-column: 2; grid-row: 4; }
+@media (max-width: 960px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .grid > .card { grid-column: 1; grid-row: auto; }
+}
+
+.map-wrap {
+  position: relative; width: 100%; max-width: 100%;
+  aspect-ratio: 2 / 1; border-radius: 8px; overflow: hidden;
+  background: var(--surface);
+}
+@media (max-width: 600px) { .map-wrap { aspect-ratio: 1 / 1; } }
+#brain3d { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+#brain3d.dragging { cursor: grabbing; }
+.map-label {
+  position: absolute; left: 0; top: 0; pointer-events: none; white-space: nowrap;
+  font-size: 12px; font-weight: 600; color: var(--ink);
+  text-shadow: 0 0 3px var(--surface), 0 0 3px var(--surface), 0 0 6px var(--surface);
+}
+.gl-note { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 13px; padding: 16px; text-align: center; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; color: var(--ink-2); font-size: 12px; }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.legend-hint { color: var(--muted); }
+.key-gradient { width: 44px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--grid), var(--s1)); }
+.key-ring { width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ink-2); }
+.key-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ink-2); }
+.key-rect { width: 12px; height: 8px; border-radius: 2px; }
+
+.compass { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sense {
+  min-height: 74px; padding: 8px; border-radius: 8px;
+  background: var(--page); box-shadow: inset 0 0 0 1px var(--border);
+  display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0;
+}
+.sense.empty { background: transparent; box-shadow: none; }
+.sense.agent { align-items: center; text-align: center; color: var(--ink-2); }
+.sense-where { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.sense-block { font-weight: 600; overflow-wrap: anywhere; }
+.sense-kind { color: var(--ink-2); font-size: 12px; }
+.flags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.world { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 12px 0 0; font-size: 13px; }
+.world:empty { display: none; }
+.world dt { color: var(--muted); }
+.world dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+
+.bars { display: flex; flex-direction: column; gap: 6px; }
+.bar-row {
+  display: grid; grid-template-columns: minmax(96px, 38%) minmax(0, 1fr);
+  align-items: center; gap: 10px; border-radius: 6px; padding: 2px 4px; margin: 0 -4px; outline: none;
+}
+.bar-row:hover, .bar-row:focus-visible { background: var(--page); }
+.bar-label { color: var(--ink-2); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-row.chosen .bar-label { color: var(--ink); font-weight: 600; }
+.track { position: relative; height: 20px; }
+.track .rule { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--axis); }
+.bar {
+  position: absolute; left: 0; top: 4px; height: 12px;
+  border-radius: 0 4px 4px 0; min-width: 0;
+  transition: width 300ms ease;
+}
+.bar-value { position: absolute; top: 1px; font-size: 12px; color: var(--ink-2); white-space: nowrap; transition: left 300ms ease; }
+.bar-row.chosen .bar-value { color: var(--ink); font-weight: 600; }
+.empty-note { color: var(--muted); font-size: 13px; }
+
+#lines { display: block; width: 100%; height: 220px; outline: none; }
+#lines text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.strip-head { color: var(--ink-2); font-size: 12px; margin: 12px 0 6px; }
+.strip { display: flex; flex-wrap: wrap; gap: 2px; min-height: 14px; }
+.chip { width: 12px; height: 12px; border-radius: 3px; outline: none; }
+.chip.failed { background: transparent !important; box-shadow: inset 0 0 0 2px var(--chip); }
+.chip:hover, .chip:focus-visible { transform: scale(1.3); }
+
+.table-view { margin-top: 16px; }
+.table-view summary { cursor: pointer; font-weight: 600; }
+.tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 12px; }
+.table-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+caption { text-align: left; font-weight: 600; padding-bottom: 6px; }
+th, td { text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--grid); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.tip {
+  position: fixed; z-index: 10; pointer-events: none;
+  background: var(--surface); color: var(--ink);
+  box-shadow: 0 0 0 1px var(--border), 0 6px 20px rgba(0, 0, 0, 0.5);
+  border-radius: 8px; padding: 8px 10px; font-size: 12px; max-width: 280px;
+}
+.tip-title { color: var(--ink-2); margin-bottom: 4px; }
+.tip-row { display: flex; align-items: center; gap: 6px; }
+.tip-row strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tip-row span { color: var(--ink-2); }
+.tip-key { width: 12px; height: 2px; border-radius: 1px; flex: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>FlyMinecraft brain</h1>
+      <p class="sub">The FlyWire connectome of the fruit fly, driving the Agent live</p>
+    </div>
+    <div class="pills">
+      <span id="linkPill" class="pill muted"><span class="icon">…</span><span class="text">Connecting to the server</span></span>
+      <span id="gamePill" class="pill muted"><span class="icon">○</span><span class="text">Waiting for Minecraft</span></span>
+    </div>
+  </header>
+
+  <section class="tiles">
+    <div class="tile">
+      <div class="tile-label">Doing now</div>
+      <div class="hero-row"><span id="actionSwatch" class="swatch"></span><span id="actionValue" class="hero-value">—</span></div>
+      <div id="actionSub" class="tile-sub">Waiting for the first brain tick</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Neurons that fired this tick</div>
+      <div id="activeValue" class="tile-value">—</div>
+      <div class="tile-sub"><svg id="spark" width="120" height="28" aria-hidden="true"></svg><span id="activeSub"></span></div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Carrying</div>
+      <div id="carriedValue" class="tile-value">—</div>
+      <div class="tile-sub">blocks mined and not yet placed</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Brain speed</div>
+      <div id="speedValue" class="tile-value">—</div>
+      <div id="speedSub" class="tile-sub"></div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <article class="card map-card">
+      <h2>Brain activity</h2>
+      <p class="card-sub">Every neuron of the connectome in 3D. Each one that fires lights up, then fades. Hover to inspect a neuron.</p>
+      <div id="mapWrap" class="map-wrap">
+        <canvas id="brain3d" role="img" aria-label="3D view of neurons firing in the fly brain"></canvas>
+        <div id="mapLabel" class="map-label" hidden></div>
+        <div id="glNote" class="gl-note" hidden>This browser cannot show the 3D brain (WebGL is unavailable). Every other panel still updates.</div>
+      </div>
+      <div class="legend">
+        <span class="legend-item"><span class="key-gradient"></span>Fired this tick (brighter = more spikes)</span>
+        <span class="legend-item"><span class="key-ring"></span>Neuron receiving sensory or drive input</span>
+        <span class="legend-item"><span class="key-dot"></span>Motor readout neuron, in its command's colour</span>
+        <span class="legend-item legend-hint">Drag to rotate, scroll to zoom, double-click to reset</span>
+      </div>
+    </article>
+
+    <article class="card senses-card">
+      <h2>What the fly senses</h2>
+      <p class="card-sub">Blocks around the Agent, and the taste each one triggers</p>
+      <div id="compass" class="compass"></div>
+      <div id="flags" class="flags"></div>
+      <dl id="world" class="world"></dl>
+    </article>
+
+    <article class="card motor-card">
+      <h2>Motor pools</h2>
+      <p class="card-sub">Firing above baseline. The strongest pool above the <span id="thresholdText">5 Hz</span> line becomes the command.</p>
+      <div id="motorBars" class="bars"><div class="empty-note">No ticks yet</div></div>
+    </article>
+
+    <article class="card history-card">
+      <h2>Decisions over time</h2>
+      <p class="card-sub">Motor pool scores for the last 40 ticks, in Hz above baseline</p>
+      <div id="motorLegend" class="legend" style="margin: 0 0 8px"></div>
+      <svg id="lines" tabindex="0" role="img" aria-label="Motor pool scores over recent ticks"></svg>
+      <div class="strip-head">Command chosen each tick, oldest to newest (outlined = move was blocked)</div>
+      <div id="strip" class="strip"></div>
+    </article>
+
+    <article class="card inputs-card">
+      <h2>Senses and drives in</h2>
+      <p class="card-sub">Poisson input rate into each neuron group</p>
+      <div id="inputBars" class="bars"><div class="empty-note">No ticks yet</div></div>
+    </article>
+
+    <article class="card classes-card">
+      <h2>Firing by neuron class</h2>
+      <p class="card-sub">Mean firing rate across every neuron in each class</p>
+      <div id="classBars" class="bars"><div class="empty-note">No ticks yet</div></div>
+    </article>
+  </section>
+
+  <details class="card table-view">
+    <summary>Table view of the latest tick</summary>
+    <div id="tables" class="tables"></div>
+  </details>
+</div>
+<div id="tip" class="tip" hidden></div>
+
+<script>
+'use strict';
+
+const ACTIONS = [
+  { key: 'forward', label: 'Forward', color: '--s2' },
+  { key: 'turn_left', label: 'Turn left', color: '--s3' },
+  { key: 'turn_right', label: 'Turn right', color: '--s4' },
+  { key: 'feed', label: 'Feed', color: '--s5' },
+  { key: 'lay_egg', label: 'Lay egg', color: '--s6' },
+  { key: 'takeoff', label: 'Take off', color: '--s7' },
+  { key: 'descend', label: 'Descend', color: '--s8' },
+];
+const ACTION_BY_KEY = Object.fromEntries(ACTIONS.map(a => [a.key, a]));
+const MOTOR_ACTION = {
+  forward_left: 'forward', forward_right: 'forward', turn_left: 'turn_left', turn_right: 'turn_right',
+  feed: 'feed', lay_egg: 'lay_egg', takeoff: 'takeoff', backward: 'descend',
+};
+// Fallback when the server does not send layout.input_labels
+const INPUTS = [
+  ['drive_forward', 'Walking drive'], ['drive_egg', 'Egg-laying drive'], ['gravity', 'Gravity'],
+  ['sugar', 'Sugar taste'], ['low_salt', 'Low-salt taste'], ['bitter', 'Bitter taste'], ['heat', 'Heat'],
+  ['touch_left', 'Touch, left'], ['touch_right', 'Touch, right'],
+  ['sound', 'Bump (sound)'],
+];
+const CLASS_FOLD = {
+  sensory: 'Sensory', sensory_ascending: 'Sensory',
+  optic: 'Visual', visual_projection: 'Visual', visual_centrifugal: 'Visual',
+  central: 'Central', ascending: 'Ascending', descending: 'Descending', motor: 'Motor', endocrine: 'Endocrine',
+};
+const FOLDS = ['Sensory', 'Visual', 'Central', 'Ascending', 'Descending', 'Motor', 'Endocrine'];
+const KINDS = {
+  air: ['○', 'Air'],
+  solid: ['■', 'Solid block, touch only'],
+  wood: ['◇', 'Wood, low-salt taste'],
+  ore: ['◆', 'Ore, sugar taste'],
+  hazard: ['▲', 'Hazard, bitter taste'],
+  lava: ['▲', 'Lava, heat and bitter taste'],
+};
+const HISTORY = 40;
+const STRIP = 60;
+const TAU_S = 1.2;           // spike glow fade time constant
+
+const $ = id => document.getElementById(id);
+const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const fmt = new Intl.NumberFormat();
+const hz = v => `${v >= 10 ? Math.round(v) : v.toFixed(1)} Hz`;
+
+function hexRgb(hex) {
+  let h = hex.replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const n = parseInt(h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+const glColor = name => hexRgb(cssVar(name)).map(v => v / 255);
+
+function niceStep(v) {
+  if (!(v > 0)) return 1;
+  const p = 10 ** Math.floor(Math.log10(v));
+  const f = v / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+}
+
+function niceMax(v) {
+  if (!(v > 0)) return 10;
+  const p = 10 ** Math.floor(Math.log10(v));
+  const f = v / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function svgEl(tag, attrs) {
+  const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
+  return node;
+}
+
+function prettyBlock(name) {
+  const s = (name || '').replace(/^minecraft:/, '').replace(/_/g, ' ');
+  return s ? s[0].toUpperCase() + s.slice(1) : 'Unknown';
+}
+
+// ---------- tooltip ----------
+const tip = $('tip');
+function showTip(x, y, title, rows) {
+  tip.replaceChildren();
+  if (title) tip.append(el('div', 'tip-title', title));
+  for (const row of rows) {
+    const line = el('div', 'tip-row');
+    if (row.color) {
+      const key = el('span', 'tip-key');
+      key.style.background = `var(${row.color})`;
+      line.append(key);
+    }
+    line.append(el('strong', '', row.value));
+    if (row.label) line.append(el('span', '', row.label));
+    tip.append(line);
+  }
+  tip.hidden = false;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = `${Math.max(8, Math.min(x + 14, innerWidth - w - 8))}px`;
+  tip.style.top = `${Math.max(8, Math.min(y + 14, innerHeight - h - 8))}px`;
+}
+function hideTip() { tip.hidden = true; }
+function tipOnElement(node, title, rows) {
+  const r = node.getBoundingClientRect();
+  showTip(r.left, r.bottom - 10, title, rows);
+}
+
+// ---------- state ----------
+let layout = null;
+let latest = null;
+let heat, activeFlag, lastSpikes, prevFired = [], activeList = [];
+let foldOf, foldSize, groupsOf;
+let inputList = INPUTS;
+const history = [];
+const strip = [];
+
+function inputRows(t) {
+  const rows = inputList.map(([key, label]) => [key, label]);
+  const known = new Set(rows.map(r => r[0]));
+  for (const key of Object.keys(t ? t.inputs : {})) if (!known.has(key)) rows.push([key, key]);
+  return rows;
+}
+
+// ---------- 3D brain ----------
+const canvas = $('brain3d');
+const mapWrap = $('mapWrap');
+const mapLabel = $('mapLabel');
+let gl = null;
+let pointProg, markProg, posBuf, heatBuf, markBuf;
+let placed, slotOf, positions, heatV, markCount = 0, labelTarget = null;
+const cam = { yaw: 0, pitch: 0, zoom: 1, fit: 3, lastInteract: -Infinity, version: 0 };
+let heatDirty = true, drawDirty = true, cssW = 1, cssH = 1, dpr = 1, halfY = 0.5, halfZ = 0.5;
+
+const POINT_VS = `
+attribute vec3 aPos;
+attribute float aHeat;
+uniform mat4 uMVP;
+uniform float uPass;
+uniform float uSize;
+varying float vHeat;
+void main() {
+  vHeat = aHeat;
+  if (uPass > 0.5 && aHeat < 0.03) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; return; }
+  gl_Position = uMVP * vec4(aPos, 1.0);
+  gl_PointSize = uPass > 0.5 ? uSize * (1.8 + 2.4 * aHeat) : uSize;
+}`;
+// Uniforms shared between stages must match precision, so the fragment stage has its own pass flag
+const POINT_FS = `
+precision mediump float;
+varying float vHeat;
+uniform float uFragPass;
+uniform vec3 uBase;
+uniform vec3 uSpike;
+uniform float uBaseAlpha;
+void main() {
+  vec2 d = gl_PointCoord - vec2(0.5);
+  float r2 = dot(d, d);
+  if (r2 > 0.25) discard;
+  if (uFragPass < 0.5) {
+    gl_FragColor = vec4(uBase * uBaseAlpha, uBaseAlpha);
+  } else {
+    float a = clamp(vHeat, 0.0, 1.0) * (1.0 - smoothstep(0.02, 0.25, r2));
+    gl_FragColor = vec4(uSpike * a, a);
+  }
+}`;
+const MARK_VS = `
+attribute vec3 aPos;
+attribute vec4 aColor;
+attribute float aSize;
+uniform mat4 uMVP;
+uniform float uDpr;
+varying vec4 vColor;
+varying float vRing;
+void main() {
+  gl_Position = uMVP * vec4(aPos, 1.0);
+  gl_PointSize = abs(aSize) * uDpr;
+  vColor = aColor;
+  vRing = aSize < 0.0 ? 1.0 : 0.0;
+}`;
+const MARK_FS = `
+precision mediump float;
+varying vec4 vColor;
+varying float vRing;
+uniform vec3 uSurface;
+void main() {
+  float r = length(gl_PointCoord - vec2(0.5));
+  if (r > 0.5) discard;
+  if (vRing > 0.5) {
+    if (r < 0.3) discard;
+    gl_FragColor = vec4(vColor.rgb * vColor.a, vColor.a);
+  } else {
+    float edge = step(0.34, r);
+    vec3 c = mix(vColor.rgb, uSurface, edge);
+    float a = mix(vColor.a, 1.0, edge);
+    gl_FragColor = vec4(c * a, a);
+  }
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+function program(vs, fs, attribs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  attribs.forEach((name, i) => gl.bindAttribLocation(p, i, name));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  p.u = name => gl.getUniformLocation(p, name);
+  return p;
+}
+
+// Column-major 4x4 matrices
+function mul(a, b) {
+  const o = new Float32Array(16);
+  for (let c = 0; c < 4; c++) {
+    for (let r = 0; r < 4; r++) {
+      let s = 0;
+      for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+      o[c * 4 + r] = s;
+    }
+  }
+  return o;
+}
+function perspective(fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+  return new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0]);
+}
+function rotX(t) { const c = Math.cos(t), s = Math.sin(t); return new Float32Array([1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1]); }
+function rotY(t) { const c = Math.cos(t), s = Math.sin(t); return new Float32Array([c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]); }
+function translateZ(z) { return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, z, 1]); }
+
+const FOV = 30 * Math.PI / 180;
+function mvp() {
+  const aspect = cssW / cssH;
+  const t = Math.tan(FOV / 2);
+  cam.fit = Math.max(1.06 / (t * aspect), (halfY * 1.12) / t) + halfZ;
+  return mul(perspective(FOV, aspect, 0.05, 50), mul(translateZ(-cam.fit * cam.zoom), mul(rotX(cam.pitch), rotY(cam.yaw))));
+}
+function project(m, x, y, z) {
+  const w = m[3] * x + m[7] * y + m[11] * z + m[15];
+  if (w <= 0.01) return null;
+  return [((m[0] * x + m[4] * y + m[8] * z + m[12]) / w * 0.5 + 0.5) * cssW,
+          (0.5 - (m[1] * x + m[5] * y + m[9] * z + m[13]) / w * 0.5) * cssH];
+}
+
+function setupBrain() {
+  gl = canvas.getContext('webgl', { antialias: false, alpha: false, premultipliedAlpha: true });
+  if (!gl) { canvas.hidden = true; $('glNote').hidden = false; return; }
+  try {
+    pointProg = program(POINT_VS, POINT_FS, ['aPos', 'aHeat']);
+    markProg = program(MARK_VS, MARK_FS, ['aPos', 'aColor', 'aSize']);
+  } catch (err) {
+    console.error('3D brain shaders failed:', err);
+    gl = null;
+    canvas.hidden = true;
+    $('glNote').hidden = false;
+    return;
+  }
+
+  const N = layout.num_neurons;
+  placed = [];
+  slotOf = new Int32Array(N).fill(-1);
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < N; i++) {
+    if (layout.x[i] < 0) continue;
+    slotOf[i] = placed.length;
+    placed.push(i);
+    const p = [layout.x[i], layout.y[i], layout.z[i]];
+    for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], p[a]); hi[a] = Math.max(hi[a], p[a]); }
+  }
+  const centre = lo.map((v, a) => (v + hi[a]) / 2);
+  const half = Math.max(...hi.map((v, a) => (v - lo[a]) / 2)) || 1;
+  halfY = (hi[1] - lo[1]) / 2 / half;
+  halfZ = (hi[2] - lo[2]) / 2 / half;
+  positions = new Float32Array(placed.length * 3);
+  placed.forEach((i, s) => {
+    positions[s * 3] = (layout.x[i] - centre[0]) / half;
+    positions[s * 3 + 1] = -(layout.y[i] - centre[1]) / half;  // brain y points down; show dorsal up
+    positions[s * 3 + 2] = (layout.z[i] - centre[2]) / half;
+  });
+  heatV = new Float32Array(placed.length);
+
+  posBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+  heatBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, heatBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, heatV, gl.DYNAMIC_DRAW);
+  markBuf = gl.createBuffer();
+
+  new ResizeObserver(resizeBrain).observe(mapWrap);
+  resizeBrain();
+  setupControls();
+}
+
+function resizeBrain() {
+  if (!gl) return;
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cssW = Math.max(1, mapWrap.clientWidth);
+  cssH = Math.max(1, mapWrap.clientHeight);
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  cam.version++;
+  drawDirty = true;
+}
+
+function buildMarks() {
+  if (!gl || !latest) return;
+  const data = [];
+  const push = (i, rgb, a, size) => {
+    const s = slotOf[i];
+    if (s < 0) return;
+    data.push(positions[s * 3], positions[s * 3 + 1], positions[s * 3 + 2], rgb[0], rgb[1], rgb[2], a, size);
+  };
+  const ink2 = glColor('--ink-2');
+  for (const [name, rate] of Object.entries(latest.inputs)) {
+    if (!(rate > 0)) continue;
+    for (const i of layout.inputs[name] || []) push(i, ink2, 0.22, -6);
+  }
+  labelTarget = null;
+  for (const [group, indices] of Object.entries(layout.motors)) {
+    const action = ACTION_BY_KEY[MOTOR_ACTION[group]];
+    if (!action) continue;
+    const firing = (latest.firing[group] || 0) > 0;
+    const rgb = glColor(action.color);
+    for (const i of indices) {
+      push(i, rgb, firing ? 1 : 0.4, 11);
+      if (action.key === latest.action && !labelTarget && slotOf[i] >= 0) labelTarget = { slot: slotOf[i], text: action.label };
+    }
+  }
+  const arr = new Float32Array(data);
+  markCount = arr.length / 8;
+  gl.bindBuffer(gl.ARRAY_BUFFER, markBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW);
+  drawDirty = true;
+}
+
+function drawBrain() {
+  const m = mvp();
+  gl.clearColor(...glColor('--surface'), 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.BLEND);
+
+  if (heatDirty) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, heatBuf);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, heatV);
+    heatDirty = false;
+  }
+
+  gl.useProgram(pointProg);
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, heatBuf);
+  gl.enableVertexAttribArray(1);
+  gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 0, 0);
+  gl.disableVertexAttribArray(2);
+  gl.uniformMatrix4fv(pointProg.u('uMVP'), false, m);
+  gl.uniform3fv(pointProg.u('uBase'), glColor('--muted'));
+  gl.uniform3fv(pointProg.u('uSpike'), glColor('--s1'));
+  gl.uniform1f(pointProg.u('uBaseAlpha'), 0.16);
+  gl.uniform1f(pointProg.u('uSize'), Math.max(1, 1.5 * Math.sqrt(1 / cam.zoom)) * dpr);
+
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  gl.uniform1f(pointProg.u('uPass'), 0);
+  gl.uniform1f(pointProg.u('uFragPass'), 0);
+  gl.drawArrays(gl.POINTS, 0, placed.length);
+  gl.blendFunc(gl.ONE, gl.ONE);
+  gl.uniform1f(pointProg.u('uPass'), 1);
+  gl.uniform1f(pointProg.u('uFragPass'), 1);
+  gl.drawArrays(gl.POINTS, 0, placed.length);
+
+  if (markCount) {
+    gl.useProgram(markProg);
+    gl.bindBuffer(gl.ARRAY_BUFFER, markBuf);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 32, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 32, 12);
+    gl.enableVertexAttribArray(2);
+    gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 32, 28);
+    gl.uniformMatrix4fv(markProg.u('uMVP'), false, m);
+    gl.uniform1f(markProg.u('uDpr'), dpr);
+    gl.uniform3fv(markProg.u('uSurface'), glColor('--surface'));
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.drawArrays(gl.POINTS, 0, markCount);
+  }
+
+  if (labelTarget) {
+    const s = labelTarget.slot;
+    const at = project(m, positions[s * 3], positions[s * 3 + 1], positions[s * 3 + 2]);
+    if (at) {
+      mapLabel.textContent = labelTarget.text;
+      mapLabel.style.transform = `translate(${Math.round(at[0] + 10)}px, ${Math.round(at[1] - 8)}px)`;
+      mapLabel.hidden = false;
+    } else {
+      mapLabel.hidden = true;
+    }
+  } else {
+    mapLabel.hidden = true;
+  }
+  drawDirty = false;
+}
+
+let lastDecay = 0, lastFrame = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min((now - lastFrame) / 1000, 0.25);
+  lastFrame = now;
+
+  if (now - lastDecay >= 40 && activeList.length) {
+    const step = Math.min((now - lastDecay) / 1000, 0.25);
+    lastDecay = now;
+    const decay = Math.exp(-step / TAU_S);
+    let keep = 0;
+    for (let k = 0; k < activeList.length; k++) {
+      const i = activeList[k];
+      const h = heat[i] * decay;
+      const s = slotOf ? slotOf[i] : -1;
+      if (h < 0.03) {
+        heat[i] = 0;
+        activeFlag[i] = 0;
+        if (s >= 0) heatV[s] = 0;
+        continue;
+      }
+      heat[i] = h;
+      if (s >= 0) heatV[s] = h;
+      activeList[keep++] = i;
+    }
+    activeList.length = keep;
+    heatDirty = true;
+    drawDirty = true;
+  } else if (!activeList.length) {
+    lastDecay = now;
+  }
+
+  if (gl && drawDirty) drawBrain();
+}
+
+// ---------- 3D interaction ----------
+const pointers = new Map();
+let pinchDist = 0;
+let projCache = null, projVersion = -1, lastPick = 0;
+
+function touchCamera() {
+  cam.lastInteract = performance.now();
+  cam.version++;
+  drawDirty = true;
+}
+
+function setupControls() {
+  canvas.addEventListener('pointerdown', e => {
+    canvas.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, [e.clientX, e.clientY]);
+    cam.dragging = true;
+    canvas.classList.add('dragging');
+    hideTip();
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      pinchDist = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    }
+    touchCamera();
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (pointers.has(e.pointerId)) {
+      const prev = pointers.get(e.pointerId);
+      pointers.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        if (pinchDist > 0) cam.zoom = Math.max(0.35, Math.min(3, cam.zoom * pinchDist / d));
+        pinchDist = d;
+      } else {
+        cam.yaw += (e.clientX - prev[0]) * 0.006;
+        cam.pitch = Math.max(-1.4, Math.min(1.4, cam.pitch + (e.clientY - prev[1]) * 0.006));
+      }
+      touchCamera();
+      return;
+    }
+    pickAt(e);
+  });
+  const release = e => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchDist = 0;
+    if (!pointers.size) {
+      cam.dragging = false;
+      canvas.classList.remove('dragging');
+    }
+    touchCamera();
+  };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('pointerleave', () => { if (!cam.dragging) hideTip(); });
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    cam.zoom = Math.max(0.35, Math.min(3, cam.zoom * Math.exp(e.deltaY * 0.001)));
+    touchCamera();
+  }, { passive: false });
+  canvas.addEventListener('dblclick', () => {
+    cam.yaw = 0;
+    cam.pitch = 0;
+    cam.zoom = 1;
+    touchCamera();
+  });
+}
+
+function pickAt(e) {
+  if (!gl || !layout) return;
+  const now = performance.now();
+  if (now - lastPick < 50) return;
+  lastPick = now;
+  const m = mvp();
+  if (projVersion !== cam.version) {
+    projCache = projCache && projCache.length === placed.length * 2 ? projCache : new Float32Array(placed.length * 2);
+    for (let s = 0; s < placed.length; s++) {
+      const x = positions[s * 3], y = positions[s * 3 + 1], z = positions[s * 3 + 2];
+      const w = m[3] * x + m[7] * y + m[11] * z + m[15];
+      if (w <= 0.01) { projCache[s * 2] = -1e9; continue; }
+      projCache[s * 2] = ((m[0] * x + m[4] * y + m[8] * z + m[12]) / w * 0.5 + 0.5) * cssW;
+      projCache[s * 2 + 1] = (0.5 - (m[1] * x + m[5] * y + m[9] * z + m[13]) / w * 0.5) * cssH;
+    }
+    projVersion = cam.version;
+  }
+  const r = canvas.getBoundingClientRect();
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+  let best = -1, bestD = 64;  // within 8 CSS px
+  for (let s = 0; s < placed.length; s++) {
+    const dx = projCache[s * 2] - px;
+    if (dx > 8 || dx < -8) continue;
+    const dy = projCache[s * 2 + 1] - py;
+    const d = dx * dx + dy * dy;
+    if (d < bestD) { bestD = d; best = s; }
+  }
+  if (best < 0) { hideTip(); return; }
+  const i = placed[best];
+  const cls = layout.cls[i] >= 0 ? layout.classes[layout.cls[i]].replace(/_/g, ' ') : 'unclassified';
+  const spikes = lastSpikes[i];
+  const rows = [{ value: `${spikes} spike${spikes === 1 ? '' : 's'}`, label: 'this tick' }];
+  for (const g of groupsOf.get(i) || []) rows.push({ value: g, label: 'group' });
+  showTip(e.clientX, e.clientY, `Neuron ${fmt.format(i)} · ${cls}`, rows);
+}
+
+// ---------- bars ----------
+function renderBars(container, items, { max, threshold, chosen }) {
+  container.replaceChildren();
+  for (const item of items) {
+    const row = el('div', 'bar-row' + (item.key === chosen ? ' chosen' : ''));
+    row.tabIndex = 0;
+    const label = el('span', 'bar-label', item.key === chosen ? `${item.label} (chosen)` : item.label);
+    const track = el('div', 'track');
+    // Bars span the track minus room for the value label, so the label never overflows the card
+    const span = f => `calc((100% - 64px) * ${f.toFixed(4)})`;
+    const f = Math.max(0, Math.min(1, item.value / max));
+    if (threshold !== undefined) {
+      const rule = el('span', 'rule');
+      rule.style.left = span(Math.min(1, threshold / max));
+      track.append(rule);
+    }
+    const bar = el('div', 'bar');
+    bar.style.width = span(f);
+    bar.style.background = `var(${item.color || '--s1'})`;
+    const value = el('span', 'bar-value', item.text);
+    value.style.left = `calc(${span(f)} + 6px)`;
+    track.append(bar, value);
+    row.append(label, track);
+    const show = (x, y) => showTip(x, y, item.label, item.tip);
+    row.addEventListener('pointermove', e => show(e.clientX, e.clientY));
+    row.addEventListener('pointerleave', hideTip);
+    row.addEventListener('focus', () => tipOnElement(row, item.label, item.tip));
+    row.addEventListener('blur', hideTip);
+    container.append(row);
+  }
+}
+
+// ---------- line chart ----------
+const lines = $('lines');
+function lineGeometry() {
+  const w = lines.clientWidth || 600, h = 220;
+  const m = { l: 40, r: 16, t: 10, b: 24 };
+  return { w, h, m, pw: w - m.l - m.r, ph: h - m.t - m.b };
+}
+function renderLines() {
+  const { w, h, m, pw, ph } = lineGeometry();
+  lines.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  lines.replaceChildren();
+  const n = history.length;
+  if (!n) return;
+  const threshold = latest.threshold_hz;
+  let top = threshold;
+  for (const t of history) for (const a of ACTIONS) top = Math.max(top, t.scores[a.key] || 0);
+  const step = niceStep(top / 4);
+  const max = Math.max(step, Math.ceil(top / step) * step);
+  const x = k => m.l + (HISTORY - n + k) / (HISTORY - 1) * pw;
+  const y = v => m.t + ph - Math.max(0, Math.min(v, max)) / max * ph;
+
+  for (let s = 0; s * step <= max + 1e-9; s++) {
+    const v = s * step;
+    lines.append(svgEl('line', { x1: m.l, x2: m.l + pw, y1: y(v), y2: y(v), style: `stroke: var(${s ? '--grid' : '--axis'}); stroke-width: 1` }));
+    const t = svgEl('text', { x: m.l - 6, y: y(v) + 4, 'text-anchor': 'end' });
+    t.textContent = fmt.format(Math.round(v));
+    lines.append(t);
+  }
+  lines.append(svgEl('line', { x1: m.l, x2: m.l + pw, y1: y(threshold), y2: y(threshold), style: 'stroke: var(--muted); stroke-width: 1' }));
+  const thrLabel = svgEl('text', { x: m.l + 4, y: y(threshold) - 4 });
+  thrLabel.textContent = `threshold ${threshold} Hz`;
+  lines.append(thrLabel);
+  const left = svgEl('text', { x: m.l, y: h - 6 });
+  left.textContent = `${HISTORY} ticks ago`;
+  const right = svgEl('text', { x: m.l + pw, y: h - 6, 'text-anchor': 'end' });
+  right.textContent = 'now';
+  lines.append(left, right);
+
+  for (const a of ACTIONS) {
+    const pts = history.map((t, k) => `${x(k).toFixed(1)},${y(t.scores[a.key] || 0).toFixed(1)}`).join(' ');
+    lines.append(svgEl('polyline', { points: pts, style: `fill: none; stroke: var(${a.color}); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round` }));
+  }
+  for (const a of ACTIONS) {
+    const last = history[n - 1];
+    lines.append(svgEl('circle', { cx: x(n - 1), cy: y(last.scores[a.key] || 0), r: 4, style: `fill: var(${a.color}); stroke: var(--surface); stroke-width: 2` }));
+  }
+  lines.append(svgEl('line', { id: 'crosshair', x1: 0, x2: 0, y1: m.t, y2: m.t + ph, style: 'stroke: var(--axis); stroke-width: 1', visibility: 'hidden' }));
+}
+
+function lineTip(k, px, py) {
+  const t = history[k];
+  const rows = ACTIONS.map(a => ({ color: a.color, value: hz(Math.max(0, t.scores[a.key] || 0)), label: a.label }));
+  const chosen = ACTION_BY_KEY[t.action] ? ACTION_BY_KEY[t.action].label.toLowerCase() : 'idle';
+  showTip(px, py, `Tick ${fmt.format(t.tick)} · chose ${chosen}${t.ok ? '' : ' (blocked)'}`, rows);
+}
+lines.addEventListener('pointermove', e => {
+  const n = history.length;
+  if (!n) return;
+  const { m, pw } = lineGeometry();
+  const r = lines.getBoundingClientRect();
+  const px = e.clientX - r.left;
+  const k = Math.max(0, Math.min(n - 1, Math.round((px - m.l) / pw * (HISTORY - 1)) - (HISTORY - n)));
+  const cross = $('crosshair');
+  const cx = m.l + (HISTORY - n + k) / (HISTORY - 1) * pw;
+  cross.setAttribute('x1', cx); cross.setAttribute('x2', cx); cross.setAttribute('visibility', 'visible');
+  lineTip(k, e.clientX, e.clientY);
+});
+lines.addEventListener('pointerleave', () => { hideTip(); $('crosshair')?.setAttribute('visibility', 'hidden'); });
+lines.addEventListener('focus', () => {
+  if (!history.length) return;
+  const r = lines.getBoundingClientRect();
+  lineTip(history.length - 1, r.right - 280, r.top);
+});
+lines.addEventListener('blur', hideTip);
+
+function renderLegend() {
+  const legend = $('motorLegend');
+  legend.replaceChildren();
+  for (const a of ACTIONS) {
+    const item = el('span', 'legend-item');
+    const key = el('span', 'key-rect');
+    key.style.background = `var(${a.color})`;
+    key.style.height = '2px';
+    item.append(key, a.label);
+    legend.append(item);
+  }
+}
+
+// ---------- sparkline, strip, senses, tables ----------
+function renderSpark() {
+  const svg = $('spark');
+  svg.replaceChildren();
+  const n = history.length;
+  svg.style.display = n < 2 ? 'none' : '';
+  if (n < 2) return;
+  const max = Math.max(...history.map(t => t.active), 1);
+  const x = k => 2 + k / (HISTORY - 1) * 112 + (HISTORY - n) / (HISTORY - 1) * 112;
+  const y = v => 24 - v / max * 20;
+  svg.append(svgEl('polyline', {
+    points: history.map((t, k) => `${x(k).toFixed(1)},${y(t.active).toFixed(1)}`).join(' '),
+    style: 'fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-linejoin: round',
+  }));
+  svg.append(svgEl('circle', { cx: x(n - 1), cy: y(history[n - 1].active), r: 3, style: 'fill: var(--s1)' }));
+}
+
+function renderStrip() {
+  const box = $('strip');
+  box.replaceChildren();
+  for (const t of strip) {
+    const action = ACTION_BY_KEY[t.action];
+    const chip = el('span', 'chip' + (t.ok ? '' : ' failed'));
+    const color = action ? `var(${action.color})` : 'var(--grid)';
+    chip.style.background = color;
+    chip.style.setProperty('--chip', color);
+    chip.tabIndex = 0;
+    const rows = [{ value: action ? action.label : 'Idle', label: t.ok ? '' : 'blocked', color: action?.color }];
+    const title = `Tick ${fmt.format(t.tick)}`;
+    chip.addEventListener('pointermove', e => showTip(e.clientX, e.clientY, title, rows));
+    chip.addEventListener('pointerleave', hideTip);
+    chip.addEventListener('focus', () => tipOnElement(chip, title, rows));
+    chip.addEventListener('blur', hideTip);
+    box.append(chip);
+  }
+}
+
+function renderSenses(t) {
+  const box = $('compass');
+  box.replaceChildren();
+  const cells = [null, 'forward', null, 'left', 'agent', 'right', null, 'down', null];
+  const where = { forward: 'Ahead', left: 'Left', right: 'Right', down: 'Below' };
+  for (const c of cells) {
+    if (!c) { box.append(el('div', 'sense empty')); continue; }
+    if (c === 'agent') {
+      const tile = el('div', 'sense agent');
+      tile.append(el('div', 'sense-block', 'Agent'), el('div', 'sense-kind', 'facing ahead'));
+      box.append(tile);
+      continue;
+    }
+    const kind = t ? t.kinds[c] : null;
+    const [glyph, text] = KINDS[kind] || ['', t ? 'Unclassified' : 'Not sensed yet'];
+    const tile = el('div', 'sense');
+    tile.append(el('div', 'sense-where', where[c]),
+      el('div', 'sense-block', t ? prettyBlock(t.senses[c]) : '—'),
+      el('div', 'sense-kind', glyph ? `${glyph} ${text}` : text));
+    box.append(tile);
+  }
+  const flags = $('flags');
+  flags.replaceChildren();
+  const world = $('world');
+  world.replaceChildren();
+  if (!t) return;
+  const flag = (icon, text, cls) => {
+    const pill = el('span', `pill ${cls}`);
+    pill.append(el('span', 'icon', icon), el('span', 'text', text));
+    flags.append(pill);
+  };
+  if (t.bumped) flag('!', 'Bumped into something last tick', 'critical');
+  if (t.inputs.heat) flag('!', 'Lava nearby (heat)', 'critical');
+  if (!t.bumped && !t.inputs.heat) flag('✓', 'Nothing in the way last tick', 'good');
+  if (Array.isArray(t.world)) {
+    for (const pair of t.world) {
+      if (!Array.isArray(pair)) continue;
+      world.append(el('dt', '', String(pair[0] ?? '')), el('dd', '', String(pair[1] ?? '')));
+    }
+  }
+}
+
+function table(caption, head, rows) {
+  const wrap = el('div', 'table-scroll');
+  const tbl = el('table');
+  tbl.append(el('caption', '', caption));
+  const tr = el('tr');
+  head.forEach((hname, k) => tr.append(el('th', k ? 'num' : '', hname)));
+  const thead = el('thead');
+  thead.append(tr);
+  const tbody = el('tbody');
+  for (const r of rows) {
+    const row = el('tr');
+    r.forEach((v, k) => row.append(el('td', k ? 'num' : '', v)));
+    tbody.append(row);
+  }
+  tbl.append(thead, tbody);
+  wrap.append(tbl);
+  return wrap;
+}
+
+// ---------- ticks ----------
+function onTick(t) {
+  latest = t;
+  const seconds = t.tick_ms / 1000;
+
+  for (const i of prevFired) lastSpikes[i] = 0;
+  const foldSpikes = Object.fromEntries(FOLDS.map(f => [f, 0]));
+  for (let k = 0; k < t.fired.length; k++) {
+    const i = t.fired[k], c = t.spike_counts[k];
+    lastSpikes[i] = c;
+    heat[i] = Math.max(heat[i], Math.min(1, 0.45 + 0.2 * c));
+    if (slotOf && slotOf[i] >= 0) heatV[slotOf[i]] = heat[i];
+    if (!activeFlag[i]) { activeFlag[i] = 1; activeList.push(i); }
+    const f = foldOf[i];
+    if (f) foldSpikes[f] += c;
+  }
+  prevFired = t.fired;
+  heatDirty = true;
+  buildMarks();
+
+  history.push({ tick: t.tick, scores: t.scores, action: t.action, ok: t.ok, active: t.fired.length });
+  if (history.length > HISTORY) history.shift();
+  strip.push({ tick: t.tick, action: t.action, ok: t.ok });
+  if (strip.length > STRIP) strip.shift();
+
+  // tiles
+  const action = ACTION_BY_KEY[t.action];
+  $('actionValue').textContent = action ? action.label : 'Idle';
+  $('actionSwatch').style.background = action ? `var(${action.color})` : 'var(--grid)';
+  $('actionSub').textContent = `Tick ${fmt.format(t.tick)}${t.ok ? '' : ' · the move was blocked'}`;
+  $('activeValue').textContent = fmt.format(t.fired.length);
+  $('activeSub').textContent = `of ${fmt.format(layout.num_neurons)}`;
+  $('carriedValue').textContent = fmt.format(t.carried);
+  const speed = seconds / t.think_s;
+  $('speedValue').textContent = `${speed.toFixed(2)}× realtime`;
+  $('speedSub').textContent = `${t.tick_ms} ms of brain time in ${t.think_s.toFixed(2)} s`;
+  $('thresholdText').textContent = `${t.threshold_hz} Hz`;
+
+  renderSenses(t);
+
+  const motorItems = ACTIONS.map(a => {
+    const v = Math.max(0, t.scores[a.key] || 0);
+    return { key: a.key, label: a.label, value: v, color: a.color, text: hz(v), tip: [{ value: hz(v), label: 'above baseline', color: a.color }] };
+  });
+  const motorMax = niceMax(Math.max(t.threshold_hz, ...motorItems.map(i => i.value)));
+  renderBars($('motorBars'), motorItems, { max: motorMax, threshold: t.threshold_hz, chosen: t.action });
+
+  const inputs = inputRows(t);
+  const inputItems = inputs.map(([key, label]) => {
+    const rate = t.inputs[key] || 0;
+    const fired = t.firing[key] || 0;
+    return {
+      key, label, value: rate, text: rate ? hz(rate) : 'off',
+      tip: [{ value: rate ? hz(rate) : 'off', label: 'input rate' }, { value: hz(fired), label: 'neurons firing' }],
+    };
+  });
+  renderBars($('inputBars'), inputItems, { max: niceMax(Math.max(...inputItems.map(i => i.value))) });
+
+  const classItems = FOLDS.map(f => {
+    const rate = foldSize[f] ? foldSpikes[f] / foldSize[f] / seconds : 0;
+    return {
+      key: f, label: f, value: rate, text: hz(rate),
+      tip: [{ value: hz(rate), label: 'mean rate' }, { value: fmt.format(foldSize[f]), label: 'neurons' }, { value: fmt.format(foldSpikes[f]), label: 'spikes this tick' }],
+    };
+  });
+  renderBars($('classBars'), classItems, { max: niceMax(Math.max(...classItems.map(i => i.value))) });
+
+  renderLines();
+  renderSpark();
+  renderStrip();
+
+  $('tables').replaceChildren(
+    table('Motor pools', ['Command', 'Hz above baseline'], motorItems.map(i => [i.key === t.action ? `${i.label} (chosen)` : i.label, i.value.toFixed(1)])),
+    table('Inputs', ['Group', 'Input Hz', 'Firing Hz'], inputs.map(([key, label]) => [label, (t.inputs[key] || 0).toFixed(0), (t.firing[key] || 0).toFixed(1)])),
+    table('Neuron classes', ['Class', 'Neurons', 'Mean Hz'], classItems.map(i => [i.label, fmt.format(foldSize[i.key]), i.value.toFixed(2)])),
+    table('Senses', ['Direction', 'Block'], ['forward', 'left', 'right', 'down'].map(s => [s, prettyBlock(t.senses[s])])),
+  );
+}
+
+function setPill(id, cls, icon, text) {
+  const pill = $(id);
+  pill.className = `pill ${cls}`;
+  pill.querySelector('.icon').textContent = icon;
+  pill.querySelector('.text').textContent = text;
+}
+
+function onStatus(s) {
+  if (!s.connected) setPill('gamePill', 'muted', '○', 'Waiting for Minecraft');
+  else if (s.paused) setPill('gamePill', 'muted', 'Ⅱ', 'Paused (chat "fly resume")');
+  else setPill('gamePill', 'good', '●', 'Minecraft connected');
+}
+
+function onHistory(ticks) {
+  history.length = 0;
+  strip.length = 0;
+  for (const t of ticks) {
+    history.push({ tick: t.tick, scores: t.scores, action: t.action, ok: t.ok, active: t.active });
+    strip.push({ tick: t.tick, action: t.action, ok: t.ok });
+  }
+  history.splice(0, Math.max(0, history.length - (HISTORY - 1)));
+  strip.splice(0, Math.max(0, strip.length - (STRIP - 1)));
+}
+
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => setPill('linkPill', 'good', '✓', 'Live');
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'tick') onTick(m);
+    else if (m.type === 'history') onHistory(m.ticks);
+    else if (m.type === 'status') onStatus(m);
+  };
+  ws.onclose = () => {
+    setPill('linkPill', 'critical', '!', 'Server offline, retrying');
+    setPill('gamePill', 'muted', '○', 'Waiting for Minecraft');
+    setTimeout(connect, 2000);
+  };
+}
+
+async function init() {
+  renderLegend();
+  renderSenses(null);
+  const response = await fetch('layout.json');
+  layout = await response.json();
+  if (Array.isArray(layout.input_labels) && layout.input_labels.length) inputList = layout.input_labels;
+  const N = layout.num_neurons;
+  heat = new Float32Array(N);
+  activeFlag = new Uint8Array(N);
+  lastSpikes = new Uint16Array(N);
+
+  foldOf = new Array(N).fill(null);
+  foldSize = Object.fromEntries(FOLDS.map(f => [f, 0]));
+  for (let i = 0; i < N; i++) {
+    const c = layout.cls[i];
+    if (c < 0) continue;
+    const f = CLASS_FOLD[layout.classes[c]];
+    if (!f) continue;
+    foldOf[i] = f;
+    foldSize[f]++;
+  }
+  groupsOf = new Map();
+  const inputLabels = Object.fromEntries(inputList);
+  for (const [name, idx] of Object.entries(layout.inputs)) {
+    for (const i of idx) (groupsOf.get(i) || groupsOf.set(i, []).get(i)).push(`${inputLabels[name] || name} input`);
+  }
+  for (const [name, idx] of Object.entries(layout.motors)) {
+    const a = ACTION_BY_KEY[MOTOR_ACTION[name]];
+    for (const i of idx) (groupsOf.get(i) || groupsOf.set(i, []).get(i)).push(`${a ? a.label : name} motor pool`);
+  }
+
+  if (!Array.isArray(layout.z)) layout.z = new Array(N).fill(0);  // older server: flat brain
+  setupBrain();
+  requestAnimationFrame(frame);
+  connect();
+}
+
+addEventListener('resize', () => { if (latest) renderLines(); });
+
+init().catch(err => {
+  setPill('linkPill', 'critical', '!', 'Could not load the brain layout');
+  console.error(err);
+});
+</script>
+</body>
+</html>

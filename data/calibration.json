@@ -1,0 +1,110 @@
+{
+  "duration_ms": 1000.0,
+  "feed_ids": [
+    720575940618165019,
+    720575940630868793
+  ],
+  "baseline_hz": {
+    "forward_left": 0.0,
+    "forward_right": 0.0,
+    "turn_left": 0.0,
+    "turn_right": 0.0,
+    "backward": 0.0,
+    "lay_egg": 0.0,
+    "takeoff": 0.0,
+    "feed": 0.0
+  },
+  "motor_hz": {
+    "baseline": {
+      "forward_left": 0.0,
+      "forward_right": 0.0,
+      "turn_left": 0.0,
+      "turn_right": 0.0,
+      "backward": 0.0,
+      "lay_egg": 0.0,
+      "takeoff": 0.0
+    },
+    "sugar": {
+      "forward_left": 0.0,
+      "forward_right": 0.0,
+      "turn_left": 0.0,
+      "turn_right": 0.0,
+      "backward": 0.0,
+      "lay_egg": 0.0,
+      "takeoff": 0.0
+    },
+    "low_salt": {
+      "forward_left": 0.0,
+      "forward_right": 0.0,
+      "turn_left": 0.0,
+      "turn_right": 0.0,
+      "backward": 0.0,
+      "lay_egg": 0.0,
+      "takeoff": 0.0
+    },
+    "bitter": {
+      "forward_left": 0.0,
+      "forward_right": 0.0,
+      "turn_left": 32.5,
+      "turn_right": 3.5,
+      "backward": 0.0,
+      "lay_egg": 0.0,
+      "takeoff": 0.0
+    },
+    "heat": {
+      "forward_left": 0.0,
+      "forward_right": 0.0,
+      "turn_left": 35.5,
+      "turn_right": 1.5,
+      "backward": 0.0,
+      "lay_egg": 0.0,
+      "takeoff": 0.0
+    },
+    "touch_left": {
+      "forward_left": 0.0,
+      "forward_right": 0.0,
+      "turn_left": 5.5,
+      "turn_right": 5.0,
+      "backward": 0.0,
+      "lay_egg": 0.0,
+      "takeoff": 0.0
+    },
+    "touch_right": {
+      "forward_left": 0.0,
+      "forward_right": 0.0,
+      "turn_left": 0.5,
+      "turn_right": 9.0,
+      "backward": 0.0,
+      "lay_egg": 0.0,
+      "takeoff": 0.0
+    },
+    "odor_left": {
+      "forward_left": 0.0,
+      "forward_right": 0.0,
+      "turn_left": 31.5,
+      "turn_right": 3.0,
+      "backward": 0.0,
+      "lay_egg": 0.0,
+      "takeoff": 0.0
+    },
+    "odor_right": {
+      "forward_left": 0.0,
+      "forward_right": 0.0,
+      "turn_left": 35.0,
+      "turn_right": 3.5,
+      "backward": 0.0,
+      "lay_egg": 0.0,
+      "takeoff": 0.0
+    },
+    "sound": {
+      "forward_left": 0.0,
+      "forward_right": 0.0,
+      "turn_left": 0.0,
+      "turn_right": 0.0,
+      "backward": 0.0,
+      "lay_egg": 0.0,
+      "takeoff": 35.0
+    }
+  },
+  "realtime_factor": 0.19477605554842659
+}

@@ -1,0 +1,3 @@
+[submodule "fly-brain"]
+	path = fly-brain
+	url = https://github.com/eonsystemspbc/fly-brain.git

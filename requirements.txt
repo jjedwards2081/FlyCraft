@@ -1,0 +1,6 @@
+# CUDA build of torch: pip install torch --index-url https://download.pytorch.org/whl/cu128
+torch>=2.8
+numpy
+pandas
+pyarrow
+websockets>=14

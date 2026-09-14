@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+
+# Downloaded during setup (see README)
+data/flywire_neuron_annotations.tsv
