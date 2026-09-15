@@ -6,8 +6,10 @@ called `flyminecraft`.)
 The [eonsystemspbc/fly-brain](https://github.com/eonsystemspbc/fly-brain) leaky
 integrate-and-fire model of the FlyWire connectome (138,639 neurons) runs live on
 the GPU as a websocket server. Minecraft Education connects to it and the brain
-drives the **Agent** robot: it walks, mines what it tastes, climbs when it bumps
-into things, and lays blocks behind it once it is carrying enough.
+drives the **Agent** robot: pick a block on the web page (grass, sand, oak logs,
+stone, coal, iron or copper ore) and the fly steers towards it, mines and collects
+every one it touches, climbs when it bumps into things, and comes back towards you
+when it strays.
 
 No behaviour is scripted. Senses and two labelled internal drives are injected
 as Poisson spikes into real neurons, and whichever real motor neuron pool fires
@@ -15,7 +17,8 @@ most becomes the Agent's next command.
 
 ## How the fly is embodied
 
-Each tick: the Agent inspects the blocks around it → those senses are fed into
+Each tick: the Agent inspects the 26 blocks of the 3×3×3 cube around it (its own
+layer, and the layers above and below) → those senses are fed into
 the brain for `--tick_ms` of brain time → the most active motor pool (above its
 calibrated baseline and `--threshold_hz`) is performed.
 
@@ -24,19 +27,18 @@ calibrated baseline and `--threshold_hz`) is performed.
 | Game situation | Neurons stimulated (FlyWire annotations) |
 |---|---|
 | Always | Johnston's organ gravity/wind neurons, 20 Hz |
-| Ore ahead (coal, iron, copper, gold, redstone, lapis, diamond, emerald, quartz, ancient debris) | Sugar GRNs (the 21 used by Shiu et al.), 200 Hz |
-| Log or wood ahead | Low-salt GRNs, 200 Hz |
+| The sought block touching a face: ahead, behind, left, right, above or below (chosen on the page) | Sugar GRNs (the 21 used by Shiu et al.), 200 Hz |
 | Water, magma, fire, cactus, bedrock... or lava ahead | Bitter GRNs, 200 Hz |
-| Lava ahead, left, right or below | Heating thermosensory neurons |
-| Any solid block left / right | Head bristle mechanosensory neurons, that side |
-| Stone, dirt, sand... | No taste: only touch when beside the fly |
+| Lava anywhere in the 3×3×3 cube around the fly | Heating thermosensory neurons |
+| New contact with a solid block left / right (not the sought block; touch adapts while the contact stays the same) | Head bristle mechanosensory neurons, that side |
+| Any other block (stone, ore, wood, dirt...) | No taste: only touch when beside the fly |
 | Last move failed (bump) | Johnston's organ auditory neurons |
 | Hostile mob within 8 blocks, that side (both if ahead or behind) | Looming-sensitive LC4 and LPLC2 visual neurons, 40 Hz |
 | Dropped items within 3 blocks, air ahead | Sugar GRNs, 200 Hz (feeding runs `agent collect all`) |
-| **Drive:** unless the last move was blocked | DNp09 (P9) forward-walking neurons, 30 Hz |
+| **Drive:** unless the last move was blocked, or it is tasting the sought block | DNp09 (P9) forward-walking neurons, 30 Hz |
 | **Drive:** player more than 10 blocks away | DNa01/DNa02 steering neurons on the player's side (right if behind), 35 Hz; rests for 3 ticks after each turn so the fly walks a staircase towards the player instead of flipping left and right |
 | **Drive:** nothing solid below, and not still blocked | MDN (moonwalker) neurons, 40 Hz |
-| **Drive:** carrying blocks | oviDNs (egg laying), 2 Hz per block, max 60 Hz |
+| **Drive:** a sought block seen more than 45° off course (on a diagonal of the cube around the fly, or scanned every 3 ticks at 2, 3 and 5 blocks in 8 directions) | DNa01/DNa02 steering neurons on that side, 35 Hz, with the same 3-tick rest; homing to the player takes priority |
 
 Game senses are read with `testfor` target selectors around the Agent (mobs,
 dropped items, the player's side) and `time query daytime`, run concurrently with
@@ -51,8 +53,7 @@ the ocelli have no effect on the motor pools.
 | DNp09 (P9) | `agent move forward` |
 | DNa01 + DNa02, left minus right | `agent turn left` / `right` |
 | MDN (moonwalker) | `agent move down`, only when the block below is air |
-| Feeding motor neurons (the CB0700 pair; found by calibration as the motor neurons most driven by sugar) | `agent destroy forward` + `agent collect all` |
-| oviDNa_a, oviDNa_b, oviDNb (egg laying) | `agent place <slot> back` |
+| Feeding motor neurons (the CB0700 pair; found by calibration as the motor neurons most driven by sugar) | mine: `agent destroy <side>` (forward, back, left, right, up or down) for every touching sought block, then `agent collect all` |
 | DNp01 (giant fibre escape) | climb: `agent move up`, then `agent move forward` onto the obstacle |
 
 Mappings: [flyminecraft/neurons.py](flyminecraft/neurons.py),
@@ -120,6 +121,10 @@ wheel with `curl.exe` and `pip install` the file.
 .\.venv\Scripts\python.exe -m flyminecraft
 ```
 
+Or double-click **start.bat**: it calibrates first if needed, starts the server,
+and opens the dashboard once it is up. Options pass through, e.g.
+`start.bat --seek oak_log`.
+
 In Minecraft Education:
 
 1. **Settings → General → turn off "Require Encrypted Websockets"**.
@@ -132,8 +137,12 @@ is doing and how many blocks it carries. `--debug` logs raw game messages.
 ### Watching the brain
 
 Open **http://localhost:8081** while the server runs (`--dashboard_port` to change
-it). The dark page shows every neuron of the connectome in 3D (drag to rotate,
-scroll to zoom), lighting up as it fires; what the Agent senses, including the
+it). Use its **Seek block** drop-down to choose what the fly looks for and mines
+(Grass Block, Sand, Oak Log, Stone, Coal Ore, Iron Ore, Copper Ore, or nothing);
+`--seek` sets the choice at start. The fly never places blocks. The dark page
+shows every neuron of the connectome in 3D (drag to rotate, scroll to zoom),
+lighting up as it fires; how many blocks of each kind it has collected; what the
+Agent senses, as a 3D model of the cube of blocks around it (drag to rotate, hover a block), and the
 game facts (player, mobs, items, footing, time); the input rate into each
 sensory group and drive; the motor pool scores that pick each command; and the
 history of decisions. It updates every tick.

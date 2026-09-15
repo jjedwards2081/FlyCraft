@@ -41,6 +41,8 @@ DRIVE_GROUPS = {
     'drive_egg':        ('cell_type', ['oviDNa_a', 'oviDNa_b', 'oviDNb'], None),
     'drive_home_left':  ('cell_type', ['DNa01', 'DNa02'], 'left'),    # steer back towards the player
     'drive_home_right': ('cell_type', ['DNa01', 'DNa02'], 'right'),
+    'drive_seek_left':  ('cell_type', ['DNa01', 'DNa02'], 'left'),    # steer towards the sought block
+    'drive_seek_right': ('cell_type', ['DNa01', 'DNa02'], 'right'),
     'drive_land':       ('cell_type', 'MDN', None),                   # nothing solid below: come down
 }
 

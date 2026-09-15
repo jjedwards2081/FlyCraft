@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 from websockets.asyncio.server import broadcast, serve
 from websockets.datastructures import Headers
+from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Response
 
 log = logging.getLogger(__name__)
@@ -65,7 +66,9 @@ def build_layout(annotations, flyid2i, num_neurons, inputs, motors, input_labels
 
 
 class Dashboard:
-    def __init__(self, layout):
+    def __init__(self, layout, on_message=None):
+        """on_message(dict) receives JSON objects sent by pages, e.g. the chosen block to seek."""
+        self._on_message = on_message
         self._page = PAGE.read_bytes()
         self._layout = json.dumps(layout, separators=(',', ':')).encode()
         self._clients = set()
@@ -103,7 +106,15 @@ class Dashboard:
             for text in self._latest.values():
                 await ws.send(text)
             self._clients.add(ws)
-            await ws.wait_closed()
+            async for raw in ws:
+                try:
+                    message = json.loads(raw)
+                except ValueError:
+                    continue
+                if isinstance(message, dict) and self._on_message:
+                    self._on_message(message)
+        except ConnectionClosed:
+            pass
         finally:
             self._clients.discard(ws)
 

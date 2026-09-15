@@ -5,7 +5,7 @@
 In Minecraft Education: Settings > General > turn off "Require Encrypted Websockets",
 open a world with cheats on, then type  /connect localhost:8080  in chat.
 Chat "fly pause" / "fly resume" to control it.
-Watch the brain at http://localhost:8081
+Watch the brain, and choose the block it seeks, at http://localhost:8081
 """
 
 import argparse
@@ -15,14 +15,15 @@ import logging
 from time import perf_counter
 
 from . import config
-from .body import INPUT_LABELS, AgentBody, classify, decide, stimulus, world_facts
+from .body import (CONTACT, DEFAULT_TARGET, INPUT_LABELS, TARGETS, AgentBody, decide, kind, stimulus,
+                   world_facts)
 from .dashboard import Dashboard, build_layout
 from .minecraft import run_server
 from .neurons import load_groups
 
 log = logging.getLogger('flyminecraft')
 
-SIDES = ('forward', 'left', 'right', 'down')
+SEEK_OPTIONS = [[key, label] for key, (label, _, _) in TARGETS.items()]
 
 
 def chat_text(body):
@@ -31,8 +32,8 @@ def chat_text(body):
     return (body.get('message') or props.get('Message') or '').strip().lower()
 
 
-async def play(client, brain, motor_names, baseline, args, dashboard):
-    body = AgentBody(client)
+async def play(client, brain, motor_names, baseline, args, dashboard, seek):
+    body = AgentBody(client, seek)
     state = {'paused': False}
 
     def status(connected):
@@ -72,22 +73,26 @@ async def play(client, brain, motor_names, baseline, args, dashboard):
 
             tick += 1
             top = ' '.join(f'{k}={v:.0f}' for k, v in sorted(scores.items(), key=lambda kv: -kv[1])[:3])
-            log.info('#%d ahead=%s inputs=%s carried=%d -> %s%s  [%s] think=%.2fs',
-                     tick, senses.forward or '?', ','.join(sorted(rates)), body.carried, action,
-                     '' if ok else ' (failed)', top, think_s)
+            log.info('#%d seek=%s eat=%s ahead=%s inputs=%s collected=%d -> %s%s  [%s] think=%.2fs',
+                     tick, senses.target, ','.join(senses.eating) or '-', senses.forward or '?',
+                     ','.join(sorted(rates)), body.carried, action, '' if ok else ' (failed)', top, think_s)
 
             fired, spike_counts = brain.spikes(counts)
             dashboard.publish({
                 'type': 'tick', 'tick': tick, 'tick_ms': args.tick_ms, 'think_s': think_s,
-                'senses': {side: getattr(senses, side) for side in SIDES},
-                'kinds': {side: classify(getattr(senses, side)) for side in SIDES},
-                'bumped': senses.bumped, 'carried': body.carried, 'world': world_facts(senses),
+                'senses': {side: getattr(senses, side) for side in CONTACT},
+                'kinds': {side: kind(getattr(senses, side), senses.target) for side in CONTACT},
+                'cube': [[*offset, block, kind(block, senses.target)] for offset, block in senses.cube.items()],
+                'eating': list(senses.eating),
+                'bumped': senses.bumped, 'carried': body.carried, 'collected': body.collected,
+                'target': senses.target, 'world': world_facts(senses),
                 'inputs': rates, 'firing': firing, 'motor_hz': motor_hz,
                 'scores': scores, 'threshold_hz': args.threshold_hz,
                 'action': action, 'ok': ok,
                 'fired': fired, 'spike_counts': spike_counts,
             })
-            await client.command(f'title @s actionbar Fly: {action}  carrying {body.carried}  ({top} Hz)')
+            label = TARGETS[senses.target][0]
+            await client.command(f'title @s actionbar Fly: {action}  seeking {label}  collected {body.carried}')
     finally:
         status(False)
 
@@ -102,6 +107,8 @@ def main():
                         help='Brain time simulated per decision (ms)')
     parser.add_argument('--threshold_hz', type=float, default=5.0,
                         help='Motor pool rate above baseline needed to act')
+    parser.add_argument('--seek', choices=list(TARGETS), default=DEFAULT_TARGET,
+                        help='Block the fly seeks and mines at start (change it on the page)')
     parser.add_argument('--debug', action='store_true', help='Log raw Minecraft responses')
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,
@@ -120,13 +127,27 @@ def main():
     log.info('Loading the connectome...')
     brain = LiveBrain({**sensory, **motor}, stimulated)
     log.info('Brain ready on %s: %d neurons', brain.device, brain.num_neurons)
-    dashboard = Dashboard(build_layout(annotations, flyid2i, brain.num_neurons, sensory, motor, INPUT_LABELS))
+
+    seek = {'target': args.seek}  # shared with the fly's body; the page changes it
+
+    def publish_seek():
+        dashboard.publish({'type': 'seek', 'block': seek['target'], 'options': SEEK_OPTIONS})
+
+    def on_page_message(message):
+        if message.get('type') == 'seek' and message.get('block') in TARGETS:
+            seek['target'] = message['block']
+            log.info('Now seeking: %s', TARGETS[seek['target']][0])
+            publish_seek()
+
+    layout = build_layout(annotations, flyid2i, brain.num_neurons, sensory, motor, INPUT_LABELS)
+    dashboard = Dashboard(layout, on_message=on_page_message)
+    publish_seek()
 
     async def serve():
         await asyncio.gather(
             dashboard.serve(args.host, args.dashboard_port),
             run_server(args.host, args.port,
-                       lambda client: play(client, brain, list(motor), baseline, args, dashboard)),
+                       lambda client: play(client, brain, list(motor), baseline, args, dashboard, seek)),
         )
 
     asyncio.run(serve())

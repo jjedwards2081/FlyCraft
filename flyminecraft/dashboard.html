@@ -43,6 +43,20 @@ h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .sub, .card-sub { margin: 2px 0 0; color: var(--ink-2); }
 .card-sub { font-size: 13px; margin-bottom: 12px; }
 .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 16px; }
+.controls label { color: var(--ink-2); font-size: 13px; }
+.controls select {
+  font: inherit; color: var(--ink); background: var(--surface);
+  border: 0; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--border);
+  padding: 6px 32px 6px 10px; min-width: 200px; max-width: 100%; cursor: pointer;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-2) 50%), linear-gradient(135deg, var(--ink-2) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 55%, calc(100% - 11px) 55%;
+  background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+}
+.controls select:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+.controls select:disabled { opacity: 0.5; cursor: default; }
+.controls .hint { color: var(--muted); font-size: 12px; }
 .pill {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 10px; border-radius: 999px;
@@ -109,14 +123,22 @@ h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .key-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ink-2); }
 .key-rect { width: 12px; height: 8px; border-radius: 2px; }
 
-.compass { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.cube-wrap {
+  position: relative; width: 100%; max-width: 100%; aspect-ratio: 4 / 3;
+  border-radius: 8px; overflow: hidden; background: var(--page);
+}
+#cube3d { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; outline: none; }
+#cube3d.dragging { cursor: grabbing; }
+#cube3d:focus-visible { box-shadow: inset 0 0 0 2px var(--s1); }
+.key-block { width: 12px; height: 12px; border-radius: 3px; }
+.key-air { width: 12px; height: 12px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--muted); }
+.faces { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; margin-top: 12px; }
 .sense {
-  min-height: 74px; padding: 8px; border-radius: 8px;
+  min-height: 62px; padding: 8px; border-radius: 8px;
   background: var(--page); box-shadow: inset 0 0 0 1px var(--border);
   display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0;
 }
-.sense.empty { background: transparent; box-shadow: none; }
-.sense.agent { align-items: center; text-align: center; color: var(--ink-2); }
+.sense.mining { box-shadow: inset 0 0 0 2px var(--s5); }
 .sense-where { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
 .sense-block { font-weight: 600; overflow-wrap: anywhere; }
 .sense-kind { color: var(--ink-2); font-size: 12px; }
@@ -179,7 +201,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 <div class="wrap">
   <header class="top">
     <div>
-      <h1>FlyMinecraft brain</h1>
+      <h1>FlyCraft brain</h1>
       <p class="sub">The FlyWire connectome of the fruit fly, driving the Agent live</p>
     </div>
     <div class="pills">
@@ -187,6 +209,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       <span id="gamePill" class="pill muted"><span class="icon">○</span><span class="text">Waiting for Minecraft</span></span>
     </div>
   </header>
+
+  <div class="controls">
+    <label for="seekSelect">Seek block</label>
+    <select id="seekSelect" disabled><option>Connecting…</option></select>
+    <span class="hint">The fly steers towards this block, and mines and collects it on contact</span>
+  </div>
 
   <section class="tiles">
     <div class="tile">
@@ -200,9 +228,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       <div class="tile-sub"><svg id="spark" width="120" height="28" aria-hidden="true"></svg><span id="activeSub"></span></div>
     </div>
     <div class="tile">
-      <div class="tile-label">Carrying</div>
+      <div class="tile-label">Collected</div>
       <div id="carriedValue" class="tile-value">—</div>
-      <div class="tile-sub">blocks mined and not yet placed</div>
+      <div id="collectedSub" class="tile-sub">blocks mined and picked up</div>
     </div>
     <div class="tile">
       <div class="tile-label">Brain speed</div>
@@ -230,8 +258,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
     <article class="card senses-card">
       <h2>What the fly senses</h2>
-      <p class="card-sub">Blocks around the Agent, and the taste each one triggers</p>
-      <div id="compass" class="compass"></div>
+      <p class="card-sub">The 26 blocks around the Agent, on its level and above and below. It can mine the six touching its faces.</p>
+      <div class="cube-wrap">
+        <canvas id="cube3d" tabindex="0" role="img" aria-label="3D model of the blocks around the Agent"></canvas>
+      </div>
+      <div id="cubeLegend" class="legend"></div>
+      <div id="faces" class="faces"></div>
       <div id="flags" class="flags"></div>
       <dl id="world" class="world"></dl>
     </article>
@@ -278,20 +310,19 @@ const ACTIONS = [
   { key: 'forward', label: 'Forward', color: '--s2' },
   { key: 'turn_left', label: 'Turn left', color: '--s3' },
   { key: 'turn_right', label: 'Turn right', color: '--s4' },
-  { key: 'feed', label: 'Feed', color: '--s5' },
-  { key: 'lay_egg', label: 'Lay egg', color: '--s6' },
-  { key: 'takeoff', label: 'Take off', color: '--s7' },
-  { key: 'descend', label: 'Descend', color: '--s8' },
+  { key: 'feed', label: 'Mine & collect', color: '--s5' },
+  { key: 'takeoff', label: 'Climb', color: '--s6' },
+  { key: 'descend', label: 'Descend', color: '--s7' },
 ];
 const ACTION_BY_KEY = Object.fromEntries(ACTIONS.map(a => [a.key, a]));
 const MOTOR_ACTION = {
   forward_left: 'forward', forward_right: 'forward', turn_left: 'turn_left', turn_right: 'turn_right',
-  feed: 'feed', lay_egg: 'lay_egg', takeoff: 'takeoff', backward: 'descend',
+  feed: 'feed', takeoff: 'takeoff', backward: 'descend',
 };
 // Fallback when the server does not send layout.input_labels
 const INPUTS = [
-  ['drive_forward', 'Walking drive'], ['drive_egg', 'Egg-laying drive'], ['gravity', 'Gravity'],
-  ['sugar', 'Sugar taste'], ['low_salt', 'Low-salt taste'], ['bitter', 'Bitter taste'], ['heat', 'Heat'],
+  ['drive_forward', 'Walking drive'], ['gravity', 'Gravity'],
+  ['sugar', 'Sugar taste'], ['bitter', 'Bitter taste'], ['heat', 'Heat'],
   ['touch_left', 'Touch, left'], ['touch_right', 'Touch, right'],
   ['sound', 'Bump (sound)'],
 ];
@@ -303,9 +334,10 @@ const CLASS_FOLD = {
 const FOLDS = ['Sensory', 'Visual', 'Central', 'Ascending', 'Descending', 'Motor', 'Endocrine'];
 const KINDS = {
   air: ['○', 'Air'],
+  target: ['★', 'The block it seeks: sweet, mines it'],
   solid: ['■', 'Solid block, touch only'],
-  wood: ['◇', 'Wood, low-salt taste'],
-  ore: ['◆', 'Ore, sugar taste'],
+  wood: ['◇', 'Wood, touch only'],
+  ore: ['◆', 'Ore, touch only'],
   hazard: ['▲', 'Hazard, bitter taste'],
   lava: ['▲', 'Lava, heat and bitter taste'],
 };
@@ -983,25 +1015,345 @@ function renderStrip() {
   }
 }
 
-function renderSenses(t) {
-  const box = $('compass');
-  box.replaceChildren();
-  const cells = [null, 'forward', null, 'left', 'agent', 'right', null, 'down', null];
-  const where = { forward: 'Ahead', left: 'Left', right: 'Right', down: 'Below' };
-  for (const c of cells) {
-    if (!c) { box.append(el('div', 'sense empty')); continue; }
-    if (c === 'agent') {
-      const tile = el('div', 'sense agent');
-      tile.append(el('div', 'sense-block', 'Agent'), el('div', 'sense-kind', 'facing ahead'));
-      box.append(tile);
-      continue;
+// ---------- 3D model of the blocks around the fly ----------
+// Offsets are [right, up, ahead] in the Agent's frame; the model draws ahead into the screen
+const FACES = { forward: [0, 0, 1], left: [-1, 0, 0], right: [1, 0, 0], back: [0, 0, -1], up: [0, 1, 0], down: [0, -1, 0] };
+const FACE_WHERE = { forward: 'Ahead', left: 'Left', right: 'Right', back: 'Behind', up: 'Above', down: 'Below' };
+const KIND_COLOR = { target: '--s5', solid: '--muted', wood: '--s4', ore: '--s7', hazard: '--s8', lava: '--s2' };
+const CUBE_VIEW = { yaw: -0.55, pitch: 0.5 };
+const CUBE_DIST = 9;
+const cubeCanvas = $('cube3d');
+const cubeCtx = cubeCanvas.getContext('2d');
+const cubeCam = { ...CUBE_VIEW };
+let cubeW = 1, cubeH = 1, cubeDpr = 1, cubeHits = [], cubeDrag = null;
+
+function whereText([r, u, a]) {
+  const flat = [a > 0 ? 'ahead' : a < 0 ? 'behind' : '', r < 0 ? 'left' : r > 0 ? 'right' : ''].filter(Boolean).join('-');
+  const s = [u > 0 ? 'above' : u < 0 ? 'below' : '', flat].filter(Boolean).join(', ');
+  return s[0].toUpperCase() + s.slice(1);
+}
+const faceOf = offset => Object.keys(FACES).find(side => FACES[side].every((v, k) => v === offset[k]));
+
+function cubeRotate([x, y, z]) {
+  const cy = Math.cos(cubeCam.yaw), sy = Math.sin(cubeCam.yaw);
+  const cp = Math.cos(cubeCam.pitch), sp = Math.sin(cubeCam.pitch);
+  const x1 = cy * x + sy * z, z1 = -sy * x + cy * z;
+  return [x1, cp * y - sp * z1, sp * y + cp * z1];
+}
+const cubeFocal = () => Math.min(cubeW, cubeH) * CUBE_DIST / 6.6;
+function cubeProject(v) {
+  const f = cubeFocal();
+  const d = CUBE_DIST - v[2];
+  return [cubeW / 2 + v[0] * f / d, cubeH / 2 - v[1] * f / d];
+}
+const cubeDepth = p => { const v = cubeRotate(p); return Math.hypot(v[0], v[1], CUBE_DIST - v[2]); };
+
+// The fly at the centre, head towards ahead (-z): a low-poly body, wings and legs, drawn back to front
+const FLY = {
+  head: '#5c4b3f', eye: '#d63a2c', thorax: '#9c7a4e', abdomen: '#c49a5e', stripe: '#4a3727',
+  leg: '#7a6552', wing: [215, 228, 240],
+};
+const FLY_SCALE = 1.3;
+const LIGHT = [0.3, 0.85, 0.43];
+
+function drawFly(ctx) {
+  const parts = [];  // {depth, draw}
+  const scaled = p => p.map(c => c * FLY_SCALE);
+  const at = p => cubeProject(cubeRotate(p));
+  const shaded = (hex, shade) => `rgb(${hexRgb(hex).map(c => Math.min(255, Math.round(c * shade))).join(',')})`;
+
+  // Ellipsoid with its poles on the ahead axis, so each ring is a band around the body (the abdomen's stripes)
+  function ellipsoid(centre, radii, colorOfRing, rings = 8, around = 12) {
+    const c = scaled(centre), r = scaled(radii);
+    const point = (i, j) => {
+      const th = Math.PI * i / rings, ph = 2 * Math.PI * j / around;
+      return [c[0] + r[0] * Math.sin(th) * Math.cos(ph), c[1] + r[1] * Math.sin(th) * Math.sin(ph), c[2] + r[2] * Math.cos(th)];
+    };
+    for (let i = 0; i < rings; i++) {
+      for (let j = 0; j < around; j++) {
+        const quad = [point(i, j), point(i + 1, j), point(i + 1, j + 1), point(i, j + 1)];
+        const mid = [0, 1, 2].map(k => quad.reduce((s, p) => s + p[k], 0) / 4);
+        const g = mid.map((v, k) => (v - c[k]) / (r[k] * r[k]));
+        const len = Math.hypot(...g) || 1;
+        const n = g.map(v => v / len);
+        const nv = cubeRotate(n), mv = cubeRotate(mid);
+        if (nv[0] * -mv[0] + nv[1] * -mv[1] + nv[2] * (CUBE_DIST - mv[2]) <= 0) continue;
+        const color = shaded(colorOfRing(i), 0.5 + 0.55 * Math.max(0, n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]));
+        const pts = quad.map(at);
+        parts.push({ depth: cubeDepth(mid), draw() {
+          const path = polyPath(pts);
+          ctx.fillStyle = color;
+          ctx.fill(path);
+          ctx.lineWidth = 0.6;  // hides hairline seams between quads
+          ctx.strokeStyle = color;
+          ctx.stroke(path);
+        } });
+      }
     }
-    const kind = t ? t.kinds[c] : null;
+  }
+  function segment(a, b, color, width) {
+    const pa = scaled(a), pb = scaled(b);
+    const depth = cubeDepth(pa.map((v, k) => (v + pb[k]) / 2));
+    const [x1, y1] = at(pa), [x2, y2] = at(pb);
+    parts.push({ depth, draw() {
+      ctx.lineCap = 'round';
+      ctx.lineWidth = Math.max(1, width * FLY_SCALE * cubeFocal() / depth);
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    } });
+  }
+  function polygon(points, fill) {
+    const ps = points.map(scaled);
+    const pts = ps.map(at);
+    parts.push({ depth: cubeDepth([0, 1, 2].map(k => ps.reduce((s, p) => s + p[k], 0) / ps.length)), draw() {
+      ctx.fillStyle = fill;
+      ctx.fill(polyPath(pts));
+    } });
+  }
+
+  const solid = color => () => color;
+  ellipsoid([0, -0.01, 0.19], [0.11, 0.095, 0.2], i => (i % 2 === 1 && i < 7 ? FLY.stripe : FLY.abdomen));
+  ellipsoid([0, 0, -0.1], [0.11, 0.1, 0.15], solid(FLY.thorax));
+  ellipsoid([0, 0.01, -0.32], [0.09, 0.085, 0.075], solid(FLY.head), 6, 10);
+  for (const side of [-1, 1]) {
+    ellipsoid([side * 0.07, 0.025, -0.33], [0.045, 0.06, 0.055], solid(FLY.eye), 6, 10);
+    segment([side * 0.025, 0.06, -0.39], [side * 0.06, 0.13, -0.45], FLY.leg, 0.012);
+
+    // three legs a side, splayed forward, out and back
+    [-0.16, -0.1, -0.04].forEach((z, k) => {
+      const spread = [-0.2, 0, 0.2][k];
+      const hip = [side * 0.08, -0.07, z];
+      const knee = [side * 0.24, 0.04, z + spread * 0.6];
+      const foot = [side * 0.34, -0.4, z + spread * 1.3];
+      segment(hip, knee, FLY.leg, 0.03);
+      segment(knee, foot, FLY.leg, 0.02);
+    });
+
+    // a see-through wing folded back over the abdomen, narrow at the root
+    const root = [side * 0.05, 0.1, -0.06], tip = [side * 0.26, 0.13, 0.42];
+    const u = tip.map((v, k) => v - root[k]);
+    const half = Math.hypot(...u) / 2;
+    const un = u.map(v => v / (2 * half));
+    const flat = Math.hypot(un[0], un[2]);
+    const vn = [un[2] / flat, 0, -un[0] / flat];
+    const mid = root.map((v, k) => (v + tip[k]) / 2);
+    const outline = [];
+    for (let k = 0; k < 16; k++) {
+      const a = 2 * Math.PI * k / 16;
+      const w = 0.11 * (0.55 + 0.45 * (1 + Math.cos(a)) / 2);
+      outline.push(mid.map((v, d) => v + un[d] * half * Math.cos(a) + vn[d] * w * Math.sin(a)));
+    }
+    const [wr, wg, wb] = FLY.wing;
+    outline.forEach((p, k) => {
+      const q = outline[(k + 1) % outline.length];
+      polygon([mid, p, q], `rgba(${wr},${wg},${wb},0.2)`);
+      segment(p, q, `rgba(${wr},${wg},${wb},0.6)`, 0.006);
+    });
+    segment(root, tip, `rgba(${wr},${wg},${wb},0.35)`, 0.005);
+  }
+
+  parts.sort((p, q) => q.depth - p.depth);
+  for (const part of parts) part.draw();
+}
+
+// A box as its camera-facing faces: [{pts, shade}], nearest-first sorting is done by the caller
+function boxFaces(centre, half) {
+  const faces = [];
+  for (let axis = 0; axis < 3; axis++) {
+    for (const sign of [-1, 1]) {
+      const normal = [0, 0, 0];
+      normal[axis] = sign;
+      const faceCentre = centre.map((c, k) => c + normal[k] * half);
+      const n = cubeRotate(normal), c = cubeRotate(faceCentre);
+      // camera sits at +CUBE_DIST on the view z axis
+      if (n[0] * -c[0] + n[1] * -c[1] + n[2] * (CUBE_DIST - c[2]) <= 0) continue;
+      const [i, j] = [0, 1, 2].filter(k => k !== axis);
+      const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([si, sj]) => {
+        const p = faceCentre.slice();
+        p[i] += si * half;
+        p[j] += sj * half;
+        return cubeProject(cubeRotate(p));
+      });
+      // lit from above, a little from the front-right
+      const shade = 0.6 + 0.4 * Math.max(0, normal[0] * 0.3 + normal[1] * 0.85 + normal[2] * 0.43);
+      faces.push({ pts, shade });
+    }
+  }
+  return faces;
+}
+
+function polyPath(pts) {
+  const p = new Path2D();
+  pts.forEach(([x, y], k) => (k ? p.lineTo(x, y) : p.moveTo(x, y)));
+  p.closePath();
+  return p;
+}
+
+function resizeCube() {
+  cubeDpr = Math.min(window.devicePixelRatio || 1, 2);
+  cubeW = Math.max(1, cubeCanvas.clientWidth);
+  cubeH = Math.max(1, cubeCanvas.clientHeight);
+  cubeCanvas.width = Math.round(cubeW * cubeDpr);
+  cubeCanvas.height = Math.round(cubeH * cubeDpr);
+  renderCube(latest);
+}
+
+function renderCube(t) {
+  const ctx = cubeCtx;
+  ctx.setTransform(cubeDpr, 0, 0, cubeDpr, 0, 0);
+  ctx.clearRect(0, 0, cubeW, cubeH);
+  const toWorld = ([r, u, a]) => [r, u, -a];
+  const eating = new Set(t && Array.isArray(t.eating) ? t.eating : []);
+  const items = [];
+  for (const [r, u, a, block, kind] of (t && Array.isArray(t.cube) ? t.cube : [])) {
+    items.push({ offset: [r, u, a], block, kind, centre: toWorld([r, u, a]), half: 0.36 });
+  }
+  items.push({ fly: true, centre: [0, 0, 0] });
+  for (const item of items) {
+    const v = cubeRotate(item.centre);
+    item.depth = Math.hypot(v[0], v[1], CUBE_DIST - v[2]);
+  }
+  items.sort((p, q) => q.depth - p.depth);  // farthest first
+
+  const ink = hexRgb(cssVar('--ink'));
+  const rgba = (rgb, shade, alpha) => `rgba(${rgb.map(c => Math.round(c * shade)).join(',')},${alpha})`;
+  cubeHits = [];
+  for (const item of items) {
+    if (item.fly) { drawFly(ctx); continue; }
+    const faces = boxFaces(item.centre, item.half);
+    const side = item.offset && faceOf(item.offset);
+    const mineable = side && item.kind === 'target';
+    let rgb, fillA, strokeA = 0.85, lineW = 1;
+    if (item.kind === 'air') {
+      rgb = hexRgb(cssVar('--muted'));
+      fillA = 0;
+      strokeA = 0.14;
+    } else {
+      rgb = hexRgb(cssVar(KIND_COLOR[item.kind] || '--muted'));
+      // ordinary blocks stay see-through so the fly is visible inside a wall or underground
+      fillA = ['target', 'lava', 'hazard'].includes(item.kind) ? 0.88 : 0.42;
+    }
+    const paths = [];
+    for (const face of faces) {
+      const path = polyPath(face.pts);
+      paths.push(path);
+      if (fillA) {
+        ctx.fillStyle = rgba(rgb, face.shade, fillA);
+        ctx.fill(path);
+      }
+      ctx.lineWidth = lineW;
+      ctx.strokeStyle = rgba(rgb, Math.min(1.25, face.shade * 1.2), strokeA);
+      ctx.stroke(path);
+    }
+    if (mineable) {
+      ctx.lineWidth = eating.has(side) ? 3 : 1.5;
+      ctx.strokeStyle = rgba(ink, 1, 0.95);
+      for (const path of paths) ctx.stroke(path);
+    }
+    if (item.offset) cubeHits.push({ item, paths, side, mineable });
+  }
+
+  ctx.font = '600 11px system-ui, -apple-system, "Segoe UI", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const [text, p] of [['Ahead', [0, 0, -2.05]], ['Above', [0, 1.95, 0]], ['Left', [-2.1, 0, 0]], ['Right', [2.1, 0, 0]]]) {
+    const [x, y] = cubeProject(cubeRotate(p));
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = cssVar('--page');
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = cssVar('--ink-2');
+    ctx.fillText(text, x, y);
+  }
+  if (!t) {
+    ctx.fillStyle = cssVar('--muted');
+    ctx.fillText('Not sensed yet', cubeW / 2, cubeH - 16);
+  }
+}
+
+function cubeTip(e) {
+  const r = cubeCanvas.getBoundingClientRect();
+  const x = (e.clientX - r.left) * cubeDpr, y = (e.clientY - r.top) * cubeDpr;
+  // nearest drawn blocks are last; prefer a real block over air in front of it
+  let hit = null;
+  for (let k = cubeHits.length - 1; k >= 0 && !hit; k--) {
+    const h = cubeHits[k];
+    if (h.item.kind !== 'air' && h.paths.some(p => cubeCtx.isPointInPath(p, x, y))) hit = h;
+  }
+  for (let k = cubeHits.length - 1; k >= 0 && !hit; k--) {
+    if (cubeHits[k].paths.some(p => cubeCtx.isPointInPath(p, x, y))) hit = cubeHits[k];
+  }
+  if (!hit) { hideTip(); return; }
+  const { item, side, mineable } = hit;
+  const [glyph, text] = KINDS[item.kind] || ['', 'Unclassified'];
+  const rows = [{ value: prettyBlock(item.block), label: glyph ? `${glyph} ${text}` : text, color: KIND_COLOR[item.kind] }];
+  if (side) {
+    const eatingNow = latest && Array.isArray(latest.eating) && latest.eating.includes(side);
+    rows.push({ value: 'Touching', label: eatingNow ? 'mining it now' : mineable ? 'the fly can mine it' : 'a face of the fly' });
+  }
+  showTip(e.clientX, e.clientY, whereText(item.offset), rows);
+}
+
+function setupCube() {
+  new ResizeObserver(resizeCube).observe(cubeCanvas);
+  cubeCanvas.addEventListener('pointerdown', e => {
+    cubeCanvas.setPointerCapture(e.pointerId);
+    cubeDrag = [e.clientX, e.clientY];
+    cubeCanvas.classList.add('dragging');
+    hideTip();
+  });
+  cubeCanvas.addEventListener('pointermove', e => {
+    if (!cubeDrag) { cubeTip(e); return; }
+    cubeCam.yaw += (e.clientX - cubeDrag[0]) * 0.01;
+    cubeCam.pitch = Math.max(-1.45, Math.min(1.45, cubeCam.pitch + (e.clientY - cubeDrag[1]) * 0.01));
+    cubeDrag = [e.clientX, e.clientY];
+    renderCube(latest);
+  });
+  const release = () => { cubeDrag = null; cubeCanvas.classList.remove('dragging'); };
+  cubeCanvas.addEventListener('pointerup', release);
+  cubeCanvas.addEventListener('pointercancel', release);
+  cubeCanvas.addEventListener('pointerleave', () => { if (!cubeDrag) hideTip(); });
+  cubeCanvas.addEventListener('dblclick', () => { Object.assign(cubeCam, CUBE_VIEW); renderCube(latest); });
+  cubeCanvas.addEventListener('keydown', e => {
+    const turn = { ArrowLeft: [-0.15, 0], ArrowRight: [0.15, 0], ArrowUp: [0, -0.15], ArrowDown: [0, 0.15] }[e.key];
+    if (!turn) return;
+    e.preventDefault();
+    cubeCam.yaw += turn[0];
+    cubeCam.pitch = Math.max(-1.45, Math.min(1.45, cubeCam.pitch + turn[1]));
+    renderCube(latest);
+  });
+
+  const legend = $('cubeLegend');
+  for (const kind of ['target', 'solid', 'wood', 'ore', 'hazard', 'lava']) {
+    const item = el('span', 'legend-item');
+    const key = el('span', 'key-block');
+    key.style.background = `var(${KIND_COLOR[kind]})`;
+    item.append(key, { target: 'Sought block', solid: 'Solid', wood: 'Wood', ore: 'Ore', hazard: 'Hazard', lava: 'Lava' }[kind]);
+    legend.append(item);
+  }
+  const air = el('span', 'legend-item');
+  air.append(el('span', 'key-air'), 'Air');
+  const agent = el('span', 'legend-item');
+  const agentKey = el('span', 'key-block');
+  agentKey.style.background = `linear-gradient(90deg, ${FLY.eye} 30%, ${FLY.thorax} 30%)`;
+  agent.append(agentKey, 'The fly, head pointing ahead');
+  legend.append(air, agent, el('span', 'legend-item legend-hint', 'White outline = can mine. Drag or arrow keys to rotate, double-click to reset'));
+}
+
+function renderSenses(t) {
+  renderCube(t);
+  const box = $('faces');
+  box.replaceChildren();
+  const eating = new Set(t && Array.isArray(t.eating) ? t.eating : []);
+  for (const side of Object.keys(FACES)) {
+    const kind = t && t.kinds ? t.kinds[side] : null;
     const [glyph, text] = KINDS[kind] || ['', t ? 'Unclassified' : 'Not sensed yet'];
-    const tile = el('div', 'sense');
-    tile.append(el('div', 'sense-where', where[c]),
-      el('div', 'sense-block', t ? prettyBlock(t.senses[c]) : '—'),
-      el('div', 'sense-kind', glyph ? `${glyph} ${text}` : text));
+    const tile = el('div', 'sense' + (eating.has(side) ? ' mining' : ''));
+    tile.append(el('div', 'sense-where', FACE_WHERE[side]),
+      el('div', 'sense-block', t && t.senses ? prettyBlock(t.senses[side]) : '—'),
+      el('div', 'sense-kind', eating.has(side) ? `${glyph} Mining it` : glyph ? `${glyph} ${text}` : text));
     box.append(tile);
   }
   const flags = $('flags');
@@ -1076,7 +1428,11 @@ function onTick(t) {
   $('actionSub').textContent = `Tick ${fmt.format(t.tick)}${t.ok ? '' : ' · the move was blocked'}`;
   $('activeValue').textContent = fmt.format(t.fired.length);
   $('activeSub').textContent = `of ${fmt.format(layout.num_neurons)}`;
-  $('carriedValue').textContent = fmt.format(t.carried);
+  $('carriedValue').textContent = fmt.format(t.carried || 0);
+  const collected = Object.entries(t.collected || {}).sort((a, b) => b[1] - a[1]);
+  $('collectedSub').textContent = collected.length
+    ? collected.slice(0, 3).map(([name, n]) => `${fmt.format(n)} ${prettyBlock(name).toLowerCase()}`).join(' · ')
+    : 'blocks mined and picked up';
   const speed = seconds / t.think_s;
   $('speedValue').textContent = `${speed.toFixed(2)}× realtime`;
   $('speedSub').textContent = `${t.tick_ms} ms of brain time in ${t.think_s.toFixed(2)} s`;
@@ -1119,7 +1475,7 @@ function onTick(t) {
     table('Motor pools', ['Command', 'Hz above baseline'], motorItems.map(i => [i.key === t.action ? `${i.label} (chosen)` : i.label, i.value.toFixed(1)])),
     table('Inputs', ['Group', 'Input Hz', 'Firing Hz'], inputs.map(([key, label]) => [label, (t.inputs[key] || 0).toFixed(0), (t.firing[key] || 0).toFixed(1)])),
     table('Neuron classes', ['Class', 'Neurons', 'Mean Hz'], classItems.map(i => [i.label, fmt.format(foldSize[i.key]), i.value.toFixed(2)])),
-    table('Senses', ['Direction', 'Block'], ['forward', 'left', 'right', 'down'].map(s => [s, prettyBlock(t.senses[s])])),
+    table('Blocks around the fly', ['Where', 'Block'], (t.cube || []).map(([r, u, a, block]) => [whereText([r, u, a]), prettyBlock(block)])),
   );
 }
 
@@ -1147,16 +1503,46 @@ function onHistory(ticks) {
   strip.splice(0, Math.max(0, strip.length - (STRIP - 1)));
 }
 
+// ---------- block to seek ----------
+let socket = null;
+const seekSelect = $('seekSelect');
+
+function onSeek(m) {
+  const options = Array.isArray(m.options) ? m.options : [];
+  const same = seekSelect.options.length === options.length
+    && options.every(([value], k) => seekSelect.options[k].value === value);
+  if (!same) {
+    seekSelect.replaceChildren(...options.map(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      return option;
+    }));
+  }
+  seekSelect.value = m.block;
+  seekSelect.disabled = false;
+}
+
+seekSelect.addEventListener('change', () => {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: 'seek', block: seekSelect.value }));
+  }
+});
+
 function connect() {
   const ws = new WebSocket(`ws://${location.host}/ws`);
+  socket = ws;
   ws.onopen = () => setPill('linkPill', 'good', '✓', 'Live');
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
     if (m.type === 'tick') onTick(m);
     else if (m.type === 'history') onHistory(m.ticks);
     else if (m.type === 'status') onStatus(m);
+    else if (m.type === 'seek') onSeek(m);
   };
   ws.onclose = () => {
+    if (socket === ws) socket = null;
+    seekSelect.disabled = true;
     setPill('linkPill', 'critical', '!', 'Server offline, retrying');
     setPill('gamePill', 'muted', '○', 'Waiting for Minecraft');
     setTimeout(connect, 2000);
@@ -1165,6 +1551,7 @@ function connect() {
 
 async function init() {
   renderLegend();
+  setupCube();
   renderSenses(null);
   const response = await fetch('layout.json');
   layout = await response.json();
