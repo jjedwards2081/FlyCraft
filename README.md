@@ -34,7 +34,7 @@ calibrated baseline and `--threshold_hz`) is performed.
 | Any other block (stone, ore, wood, dirt...) | No taste: only touch when beside the fly |
 | Last move failed (bump) | Johnston's organ auditory neurons |
 | Hostile mob within 8 blocks, that side (both if ahead or behind) | Looming-sensitive LC4 and LPLC2 visual neurons, 40 Hz |
-| Dropped items within 3 blocks, air ahead | Sugar GRNs, 200 Hz (feeding runs `agent collect all`) |
+| Dropped items within 3 blocks, air ahead | Sugar GRNs, 200 Hz (feeding runs `agent collect all`); adapts for 10 ticks when collecting finds nothing to mine, so drops out of reach don't hold the fly in place |
 | **Drive:** unless the last move was blocked, or it is tasting the sought block | DNp09 (P9) forward-walking neurons, 30 Hz |
 | **Drive:** player more than 10 blocks away | DNa01/DNa02 steering neurons on the player's side (right if behind), 35 Hz; rests for 3 ticks after each turn so the fly walks a staircase towards the player instead of flipping left and right |
 | **Drive:** nothing solid below, and not still blocked | MDN (moonwalker) neurons, 40 Hz |
@@ -121,9 +121,9 @@ wheel with `curl.exe` and `pip install` the file.
 .\.venv\Scripts\python.exe -m flyminecraft
 ```
 
-Or double-click **start.bat**: it calibrates first if needed, starts the server,
-and opens the dashboard once it is up. Options pass through, e.g.
-`start.bat --seek oak_log`.
+Or double-click **start.bat** (in PowerShell, `.\start.bat`): it calibrates first
+if needed, starts the server, and opens the dashboard once it is up. Options pass
+through, e.g. `.\start.bat --seek oak_log`.
 
 In Minecraft Education:
 
@@ -139,7 +139,7 @@ is doing and how many blocks it carries. `--debug` logs raw game messages.
 Open **http://localhost:8081** while the server runs (`--dashboard_port` to change
 it). Use its **Seek block** drop-down to choose what the fly looks for and mines
 (Grass Block, Sand, Oak Log, Stone, Coal Ore, Iron Ore, Copper Ore, or nothing);
-`--seek` sets the choice at start. The fly never places blocks. The dark page
+it starts on Sand, and `--seek` sets another choice at start. The fly never places blocks. The dark page
 shows every neuron of the connectome in 3D (drag to rotate, scroll to zoom),
 lighting up as it fires; how many blocks of each kind it has collected; what the
 Agent senses, as a 3D model of the cube of blocks around it (drag to rotate, hover a block), and the

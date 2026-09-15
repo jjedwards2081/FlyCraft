@@ -32,6 +32,7 @@ HOME_RANGE = 10       # blocks from the player before the homing drive starts
 STEER_REST_TICKS = 3  # ticks steering rests after a turn, so a 90-degree body walks between turns
 MOB_RANGE = 8         # blocks within which a hostile mob looms
 ITEM_RANGE = 3        # blocks within which dropped items can be tasted
+ITEM_REST_TICKS = 10  # ticks item taste adapts after collecting found nothing to mine, so unreachable drops don't hold the fly
 FAR = 256             # reach of the side boxes used to find the player
 NIGHT = range(13000, 23000)   # daytime ticks that count as night
 TIME_EVERY = 20       # fly ticks between time-of-day queries
@@ -62,7 +63,7 @@ TARGETS = {
     'copper_ore': ('Copper Ore', ('copper_ore', 'deepslate_copper_ore'), (-1, 0, 1)),
     'none': ('Nothing (just explore)', (), ()),
 }
-DEFAULT_TARGET = 'grass_block'
+DEFAULT_TARGET = 'sand'
 
 # Page labels for every input group, in display order
 INPUT_LABELS = [
@@ -128,6 +129,7 @@ class Senses:
     mob_left: bool = False    # a hostile mob within MOB_RANGE on that side
     mob_right: bool = False
     items_near: bool = False  # dropped items within ITEM_RANGE
+    items_fresh: bool = True  # False while item taste adapts (see ITEM_REST_TICKS)
     player: str = 'unknown'   # near | left | right | behind | ahead | unknown
     homing: str | None = None # side the homing drive steers to
     night: bool | None = None
@@ -150,7 +152,7 @@ def stimulus(senses):
     elif not senses.eating:
         rates['drive_forward'] = FORWARD_DRIVE_HZ  # a fly tasting food stops walking to eat
     ahead = classify(senses.forward)
-    if senses.eating or (ahead == 'air' and senses.items_near):
+    if senses.eating or (ahead == 'air' and senses.items_near and senses.items_fresh):
         rates['sugar'] = TASTE_HZ  # flies taste what their legs touch: the sought block, or dropped items
     elif ahead in ('hazard', 'lava'):
         rates['bitter'] = TASTE_HZ
@@ -209,7 +211,8 @@ def world_facts(senses):
         ['Seeking', seeking],
         ['Player', PLAYER_TEXT[senses.player]],
         ['Hostile mobs', mobs],
-        ['Dropped items', 'nearby' if senses.items_near else 'none nearby'],
+        ['Dropped items', ('nearby' if senses.items_fresh else 'nearby, out of reach (ignored for now)')
+         if senses.items_near else 'none nearby'],
         ['Footing', footing],
         ['Time', time],
     ]
@@ -297,6 +300,7 @@ class AgentBody:
         self._sought = None   # world coordinates of the nearest sought block last scanned
         self._next_scan = 0
         self._steer_rest = 0  # ticks left before steering may turn the fly again
+        self._item_rest = 0   # ticks left before dropped items taste sweet again
         self._contacts = {}   # side -> (coordinates, block) touched last tick
         self._night = None
         self._logged = set()
@@ -418,7 +422,8 @@ class AgentBody:
             if steering_free and not homing:
                 seek = steer_towards(where)
         return Senses(**blocks, cube=cube, target=target, eating=eating, fresh=fresh, seen=seen, seek=seek, bumped=self.bumped,
-                      mob_left=mob_left, mob_right=mob_right, items_near=items_near, player=player,
+                      mob_left=mob_left, mob_right=mob_right, items_near=items_near,
+                      items_fresh=not self._item_rest, player=player,
                       homing=homing, night=night)
 
     async def act(self, action, senses):
@@ -431,6 +436,10 @@ class AgentBody:
             ok = await self._perform(action, senses)
             bumped = action in MOVES and not ok
         self.bumped = bumped
+        if action == 'feed' and not senses.eating:
+            self._item_rest = ITEM_REST_TICKS  # collecting found nothing to mine: stop tasting those drops
+        elif self._item_rest:
+            self._item_rest -= 1
         if action in ('turn_left', 'turn_right') and (senses.homing or senses.seek):
             self._steer_rest = STEER_REST_TICKS  # walk a little before steering again
         elif self._steer_rest:
