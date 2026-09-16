@@ -103,6 +103,7 @@ async def play(client, brain, motor_names, baseline, args, dashboard, seek, worl
                 'eating': list(senses.eating),
                 'bumped': senses.bumped, 'carried': body.carried, 'collected': body.collected,
                 'target': senses.target, 'world': world_facts(senses),
+                'asleep': senses.asleep, 'night': senses.night, 'daytime': senses.daytime,
                 'inputs': rates, 'firing': firing, 'motor_hz': motor_hz,
                 'scores': scores, 'threshold_hz': args.threshold_hz,
                 'action': action, 'ok': ok,

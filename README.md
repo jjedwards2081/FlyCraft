@@ -42,7 +42,7 @@ calibrated baseline and `--threshold_hz`) is performed.
 | **Drive:** nothing to chase and the player near: it holds one compass heading for 45 ticks, then another (menotaxis, see below) | DNa01/DNa02 steering neurons on the side that turns it back onto that heading, 35 Hz; seeking and homing both take priority |
 | Dark, from `time query daytime` | Clock neurons (l-LNv, s-LNv, LNd, DN1), 30 Hz |
 | Every tick it is awake | ER5 ring neurons, up to 100 Hz as sleep pressure builds |
-| **Drive:** asleep — dark, and awake for 40 ticks | Dorsal fan-shaped body sleep neurons (the 23E10 types), 100 Hz; every drive and the sweet taste switch off until it wakes (see below) |
+| **Drive:** asleep — the game's clock says dark, from dusk (12000) to dawn (23000) | Dorsal fan-shaped body sleep neurons (the 23E10 types), 100 Hz; every drive and the sweet taste switch off until it wakes (see below) |
 
 Game senses are read with `testfor` target selectors around the Agent (mobs,
 dropped items, the player's side) and `time query daytime`, run concurrently with
@@ -111,10 +111,16 @@ outrank the heading, so this only changes what the fly does with nothing to chas
 Flies sleep, and the game already tells this one the time of day. Three real
 circuits are wired up: the **clock neurons** (48: l-LNv, s-LNv, LNd, DN1), the
 **ER5** ring neurons that carry sleep pressure (21), and the **dorsal fan-shaped
-body** sleep neurons (35, the 23E10 types this table names). Sleep pressure builds
-every tick the fly is awake; once the clock says it is dark and the fly has been
-awake for 40 ticks, it settles. Light wakes it, and so does a thud or a hostile mob,
-as a sleeping fly is still woken by a strong enough knock.
+body** sleep neurons (35, the 23E10 types this table names). The fly asks the game
+the time every 5 ticks, so it notices dusk within seconds, and sleeps whenever that
+clock says dark — from dusk at 12000 ticks to dawn at 23000, Minecraft's own night.
+Light wakes it, and so does a thud or a hostile mob, as a sleeping fly is still woken
+by a strong enough knock, and it settles again once whatever it was has passed.
+Sleep pressure builds every tick it is awake and drives ER5 whether or not it is dark,
+reaching full after 40 ticks.
+
+The page shows both: the game's time of day as a clock ("dark, 19:30 in the game"),
+the sleep state with it, and a ☾ or ☀ beside the fly's other flags.
 
 While it sleeps its drives are withdrawn — walking, seeking, homing, the heading it
 was holding, and the sweet taste of the block it seeks — so nothing reaches the
@@ -130,10 +136,11 @@ neuromodulation and slow processes that a leaky integrate-and-fire model with fi
 weights does not have. So the state is kept in `body.py`, like the heading, while the
 neurons themselves are still driven and still show on the page.
 
-Measured against the scripted stand-in, with the clock raced through a whole day:
-the fly settled once it was dark and had been awake 60 ticks, spent the night idle
-with every motor pool at zero — not feeding, though a block of the sand it seeks was
-against its face — and woke when it grew light, feeding again on the next tick.
+Measured against the scripted stand-in, with its clock running a day every ~80 ticks:
+the fly settled as soon as it went dark, idled the night through with every motor pool
+at zero — not feeding, though the sand it seeks lay a block ahead of it — and woke as
+it grew light, feeding again on the next tick. It did that twice over two nights, 80
+idle ticks in all, and the page read `dark, 01:30 in the game` while it slept.
 
 ### What it does (5 × 200 ms ticks per situation, full brain)
 

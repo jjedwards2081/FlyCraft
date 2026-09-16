@@ -34,7 +34,7 @@ HOME_RANGE = 10       # blocks from the player before the homing drive starts
 STEER_REST_TICKS = 3  # ticks steering rests after a turn, so a 90-degree body walks between turns
 GOAL_BOUT_TICKS = 45    # ticks the fly holds one heading before choosing another (a menotaxis bout)
 GOAL_BLOCKED_TICKS = 4  # moves blocked in a row before it gives up on that heading
-SLEEP_AFTER_TICKS = 40  # ticks awake before the fly will settle for the night (ER5 builds this up)
+SLEEP_PRESSURE_TICKS = 40  # ticks awake for sleep pressure to reach full (ER5 carries it)
 CLOCK_HZ = 30.0         # clock neurons, while the game says it is dark
 SLEEP_NEED_HZ = 100.0   # ER5 ring neurons, scaled by how long the fly has been awake
 SLEEP_DRIVE_HZ = 100.0  # dorsal fan-shaped body sleep neurons, while it sleeps
@@ -42,8 +42,9 @@ MOB_RANGE = 8         # blocks within which a hostile mob looms
 ITEM_RANGE = 3        # blocks within which dropped items can be tasted
 ITEM_REST_TICKS = 10  # ticks item taste adapts after collecting found nothing to mine, so unreachable drops don't hold the fly
 FAR = 256             # reach of the side boxes used to find the player
-NIGHT = range(13000, 23000)   # daytime ticks that count as night
-TIME_EVERY = 20       # fly ticks between time-of-day queries
+DUSK, DAWN = 12000, 23000     # Minecraft daytime ticks: the light goes, and comes back
+NIGHT = range(DUSK, DAWN)     # daytime ticks the fly treats as dark
+TIME_EVERY = 5        # fly ticks between time-of-day queries, so dusk and dawn are noticed quickly
 SEEK_EVERY = 3        # fly ticks between scans for the sought block
 SEEK_RINGS = (2, 3, 5)  # distances scanned along the eight compass directions
 COLLECT_WAIT_S = 0.5    # seconds for mined blocks' drops to land before agent collect all
@@ -148,6 +149,7 @@ class Senses:
     player: str = 'unknown'   # near | left | right | behind | ahead | unknown
     homing: str | None = None # side the homing drive steers to
     night: bool | None = None
+    daytime: int | None = None  # Minecraft daytime ticks, 0..23999
     asleep: bool = False      # resting for the night: its drives are switched off
     pressure: float = 0.0     # 0..1, how long it has been awake (sleep pressure)
     position: tuple | None = None  # the Agent's block (x, y, z) when sensed, if Minecraft reported it
@@ -218,6 +220,14 @@ PLAYER_TEXT = {
 BEARING_TEXT = {'ahead': 'ahead', 'left': 'to the left', 'right': 'to the right', 'behind': 'behind'}
 
 
+def clock_text(daytime):
+    """Minecraft daytime ticks as a clock: 0 is 06:00, 6000 midday, 12000 dusk, 18000 midnight."""
+    if daytime is None:
+        return 'unknown'
+    minutes = ((daytime / 1000 + 6) % 24) * 60
+    return f'{int(minutes // 60):02d}:{int(minutes % 60):02d}'
+
+
 def world_facts(senses):
     """[label, text] pairs describing the game around the fly, for the page."""
     label = TARGETS.get(senses.target, TARGETS['none'])[0]
@@ -236,7 +246,10 @@ def world_facts(senses):
         mobs = f"within {MOB_RANGE} blocks, on the {'left' if senses.mob_left else 'right'}"
     else:
         mobs = 'none nearby'
-    time = 'unknown' if senses.night is None else ('night' if senses.night else 'day')
+    if senses.night is None:
+        time = 'unknown'
+    else:
+        time = f'{"dark" if senses.night else "light"}, {clock_text(senses.daytime)} in the game'
     footing = 'in the air' if classify(senses.down) == 'air' else f"on {senses.down.replace('_', ' ')}"
     if senses.heading is None:
         exploring = 'no heading yet'
@@ -244,7 +257,7 @@ def world_facts(senses):
         exploring = f'holding {HEADING_NAMES[senses.heading]}'
         exploring += f', turning {senses.goal} onto it' if senses.goal else ' (facing it)'
     if senses.asleep:
-        sleep = 'asleep: resting until it gets light, or something disturbs it'
+        sleep = f'asleep since dark, until {clock_text(DAWN)} or something disturbs it'
     else:
         sleep = f'awake, sleep pressure {senses.pressure:.0%}'
     return [
@@ -363,6 +376,7 @@ class AgentBody:
         self._blocked = 0     # moves blocked in a row
         self._awake = 0       # ticks awake, building sleep pressure
         self._asleep = False
+        self._daytime = None  # Minecraft daytime ticks, from the last time query
         self._contacts = {}   # side -> (coordinates, block) touched last tick
         self._night = None
         self._logged = set()
@@ -428,13 +442,14 @@ class AgentBody:
         return await self._found('items', f'@e[type=item,x={x},y={y},z={z},r={ITEM_RANGE}]')
 
     async def _time_of_day(self):
-        """Night or day, queried every TIME_EVERY ticks."""
+        """(dark, daytime ticks) from the game's own clock, queried every TIME_EVERY ticks."""
         if self._tick % TIME_EVERY == 1:
             body = await self.client.command('time query daytime')
             self._log_once('time', 'time query daytime -> %s', body)
             match = re.search(r'(\d+)', body.get('statusMessage', ''))
-            self._night = int(match.group(1)) % 24000 in NIGHT if match else None
-        return self._night
+            self._daytime = int(match.group(1)) % 24000 if match else None
+            self._night = self._daytime in NIGHT if self._daytime is not None else None
+        return self._night, self._daytime
 
     async def _scan(self, target):
         """Nearest block of the sought kind on rings around the Agent, or None."""
@@ -457,7 +472,7 @@ class AgentBody:
         coords = neighbourhood(self.position, yaw)
         self.around = {side: coords[offset] for side, offset in FACES.items()}
         scan = bool(TARGETS[target][1]) and self._tick >= self._next_scan
-        *blocks, (mob_left, mob_right), items_near, player, night, sought = await asyncio.gather(
+        *blocks, (mob_left, mob_right), items_near, player, (night, daytime), sought = await asyncio.gather(
             *(self._block_at(*point) for point in coords.values()),
             self._mobs(yaw), self._items(), self._player(yaw), self._time_of_day(),
             self._scan(target) if scan else asyncio.sleep(0, self._sought))
@@ -491,11 +506,11 @@ class AgentBody:
                       goal=goal, heading=self._goal, bumped=self.bumped,
                       mob_left=mob_left, mob_right=mob_right, items_near=items_near,
                       items_fresh=not self._item_rest, player=player, asleep=asleep,
-                      pressure=min(1.0, self._awake / SLEEP_AFTER_TICKS),
-                      homing=homing, night=night, position=self.position, yaw=yaw)
+                      pressure=min(1.0, self._awake / SLEEP_PRESSURE_TICKS),
+                      homing=homing, night=night, daytime=daytime, position=self.position, yaw=yaw)
 
     def _sleep(self, night, disturbed):
-        """Rest at night once the fly has been awake a while; a thud or a mob wakes it.
+        """Rest from dusk to dawn on the game's own clock; a thud or a mob wakes it.
 
         Sleep pressure builds while it is awake (ER5 carries that in a fly) and the clock neurons
         say when it is dark. Driving the sleep neurons does not quiet this model, so the fly rests
@@ -503,10 +518,10 @@ class AgentBody:
         """
         if self._asleep:
             if not night or disturbed:
-                log.info('Awake: %s', 'disturbed' if disturbed else 'the night is over')
+                log.info('Awake: %s', 'disturbed' if disturbed else 'it is light again')
                 self._asleep, self._awake = False, 0
-        elif night and not disturbed and self._awake >= SLEEP_AFTER_TICKS:
-            log.info('Asleep: dark, and awake for %d ticks', self._awake)
+        elif night and not disturbed:
+            log.info('Asleep: it is dark')
             self._asleep = True
         if not self._asleep:
             self._awake += 1

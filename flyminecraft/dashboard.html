@@ -1766,6 +1766,9 @@ function renderSenses(t) {
     pill.append(el('span', 'icon', icon), el('span', 'text', text));
     flags.append(pill);
   };
+  if (t.asleep) flag('☾', 'Asleep: resting until it gets light', 'muted');
+  else if (t.night) flag('☾', 'Dark: it settles unless something disturbs it', 'muted');
+  else if (t.night === false) flag('☀', 'Daylight: awake', 'good');
   if (t.bumped) flag('!', 'Bumped into something last tick', 'critical');
   if (t.inputs.heat) flag('!', 'Lava nearby (heat)', 'critical');
   if (!t.bumped && !t.inputs.heat) flag('✓', 'Nothing in the way last tick', 'good');
