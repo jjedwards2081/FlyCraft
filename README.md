@@ -231,25 +231,24 @@ fly has sensed around it, so it grows as the fly explores.
 blocks and every panel, without restarting the server. Type `/connect localhost:8080`
 in the game to start again.
 
-### Playing with the brain
+### Controls
 
-The **Play with the brain** card changes what the fly feels while it runs. Every
-change takes effect on the next tick, nothing is saved, and **Reset knobs** puts it
-all back.
+The **Controls** card changes what the fly senses while it runs. Every change takes
+effect on the next tick, nothing is saved, and **Reset controls** puts it all back.
 
 - **Sliders** for each input and drive — walking, seeking, homing, exploring,
   landing, sugar, bitter, heat, touch, bump, gravity, looming, the body clock, sleep
   pressure and sleep. A slider scales its group rather than replacing it, so rates
-  that already vary (sleep pressure) keep their shape. Each has an **off** switch
-  that silences that input entirely: turn the walking drive down and watch seeking
-  take the fly instead.
+  that already vary (sleep pressure) keep their shape. Each has a **silence** switch
+  that stops that input entirely: turn the walking drive down and watch seeking take
+  the fly instead.
 - **Decision threshold** (how far above baseline a motor pool must fire to win) and
   **brain time per tick** (longer is steadier, shorter is quicker and noisier).
 - **Pause** and **Step**, to stop on an interesting decision and walk one tick at a time.
-- **Let it sleep** and **Time of day**, to switch sleeping off or tell the fly it is
-  dark whatever the game says, and watch it settle.
-- **Poke**: fire any neuron group at a rate you choose for a few ticks, whatever the
-  game is doing — the sugar receptors with nothing in front of it, or one side's
+- **Override**: switch sleeping off, or tell the fly it is dark or light whatever the
+  game's clock says, and watch it settle or rouse.
+- **Stimulate**: fire any neuron group at a rate you choose for a few ticks, whatever
+  the game is doing — the sugar receptors with nothing in front of it, or one side's
   looming detectors with no mob — and watch which motor pool answers.
 
 ### Building somewhere to experiment
@@ -305,8 +304,10 @@ flyminecraft/
   worldmap.py    the fly's route, the terrain it sensed and the blocks it mined, for the page's map
   minecraft.py   Minecraft websocket protocol (commands, events)
   calibrate.py   probe motor responses to each sense; writes data/calibration.json
+  build.py       fill commands for the test ground the page can build around the Agent
   dashboard.py   live brain web page server (layout + per-tick websocket feed)
   dashboard.html the brain web page
+  minecraft-education-logo.png  the logo shown in the page header (see Credits)
   __main__.py    the server
 fly-brain/       git submodule: eonsystemspbc/fly-brain, used unmodified (GPL-2.0-or-later)
 data/            FlyWire annotations (downloaded), calibration results
@@ -335,6 +336,10 @@ itself is theirs.
 - **[flyconnectome/flywire_annotations](https://github.com/flyconnectome/flywire_annotations)**:
   the neuron annotation table FlyCraft uses to find sensory, drive and motor
   neurons by type and to place neurons in the 3D view.
+- **Minecraft Education**: the logo in `flyminecraft/minecraft-education-logo.png`
+  is Mojang and Microsoft's, shown only to say which game the fly is playing.
+  Minecraft is a trademark of Mojang Synergies AB. FlyCraft is a hobby project,
+  neither affiliated with nor endorsed by Mojang or Microsoft.
 
 ## License
 

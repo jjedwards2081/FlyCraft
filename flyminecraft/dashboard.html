@@ -38,6 +38,10 @@ body {
 .wrap { max-width: 1440px; margin: 0 auto; padding: 20px 16px 40px; }
 
 .top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+/* the logo is dark artwork on white, so it sits on its own panel rather than on the dark page */
+.brand-logo { height: 44px; width: auto; flex: none; background: #fff; border-radius: 8px; padding: 5px 9px; }
+@media (max-width: 600px) { .brand-logo { height: 34px; } }
 h1 { margin: 0; font-size: 22px; font-weight: 600; }
 h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .sub, .card-sub { margin: 2px 0 0; color: var(--ink-2); }
@@ -147,7 +151,7 @@ h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .knob-value { color: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
 .knob-off { color: var(--muted); font-size: 11px; display: inline-flex; align-items: center; gap: 3px; }
 .knob-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 14px; }
-.knob-row label { color: var(--ink-2); font-size: 13px; }
+.knob-row label, .knob-row .row-label { color: var(--ink-2); font-size: 13px; }
 .knob-row select, .knob-row input[type=number] {
   font: inherit; color: var(--ink); background: var(--surface); border: 0; border-radius: 8px;
   box-shadow: inset 0 0 0 1px var(--border); padding: 5px 8px;
@@ -239,9 +243,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 <body>
 <div class="wrap">
   <header class="top">
-    <div>
-      <h1>FlyCraft brain</h1>
-      <p class="sub">The FlyWire connectome of the fruit fly, driving the Agent live</p>
+    <div class="brand">
+      <img class="brand-logo" src="logo.png" alt="Minecraft Education" width="3175" height="1152">
+      <div>
+        <h1>FlyCraft brain</h1>
+        <p class="sub">The FlyWire connectome of the fruit fly, driving the Agent live</p>
+      </div>
     </div>
     <div class="pills">
       <span id="linkPill" class="pill muted"><span class="icon">…</span><span class="text">Connecting to the server</span></span>
@@ -323,34 +330,35 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     </article>
 
     <article class="card knobs-card">
-      <h2>Play with the brain</h2>
-      <p class="card-sub">Change what the fly feels, and how decisive it is, while it runs. Every change takes effect on the next tick; nothing here is saved.</p>
+      <h2>Controls</h2>
+      <p class="card-sub">Change what the fly senses, and how decisive it is, while it runs. Every change takes effect on the next tick; nothing here is saved.</p>
       <div class="knob-actions">
         <button id="pauseButton" class="knob-button" type="button" disabled>Pause</button>
         <button id="stepButton" class="knob-button" type="button" disabled title="Run exactly one tick">Step</button>
-        <button id="knobsReset" class="knob-button" type="button" disabled title="Put every knob back where it started">Reset knobs</button>
+        <button id="knobsReset" class="knob-button" type="button" disabled title="Put every control back where it started">Reset controls</button>
         <span id="knobsNote" class="hint" role="status"></span>
       </div>
       <div id="knobGrid" class="knob-grid"></div>
       <div class="knob-row">
-        <label for="sleepToggle">Let it sleep</label>
+        <span class="row-label">Override</span>
         <input type="checkbox" id="sleepToggle" checked disabled>
+        <label for="sleepToggle">let it sleep</label>
         <label for="timeSelect">Time of day</label>
         <select id="timeSelect" disabled>
           <option value="">From the game</option>
           <option value="day">Tell it: daylight</option>
           <option value="night">Tell it: dark</option>
         </select>
-        <span class="hint">Lie to the fly about the time, to watch it settle or rouse</span>
+        <span class="hint">Tells the fly it is dark or light, whatever the game's clock says</span>
       </div>
       <div class="knob-row">
-        <label for="pokeGroup">Poke</label>
+        <label for="pokeGroup">Stimulate</label>
         <select id="pokeGroup" disabled></select>
-        <input type="number" id="pokeHz" value="200" min="0" max="1000" step="10" disabled aria-label="Hz to poke with">
+        <input type="number" id="pokeHz" value="200" min="0" max="1000" step="10" disabled aria-label="Hz to stimulate with">
         <span class="hint">Hz for</span>
-        <input type="number" id="pokeTicks" value="3" min="1" max="100" disabled aria-label="ticks to poke for">
+        <input type="number" id="pokeTicks" value="3" min="1" max="100" disabled aria-label="ticks to stimulate for">
         <span class="hint">ticks</span>
-        <button id="pokeButton" class="knob-button" type="button" disabled>Fire</button>
+        <button id="pokeButton" class="knob-button" type="button" disabled>Stimulate</button>
         <span class="hint">Fires those neurons whatever the game is doing, and the motor pools answer</span>
       </div>
       <div class="knob-row">
@@ -2032,7 +2040,7 @@ function addKnob(key, label, value, max, step, unit, family) {
   if (family) {
     off = document.createElement('input');
     Object.assign(off, { type: 'checkbox', id: `off-${key}` });
-    off.title = 'Switch this input off entirely';
+    off.title = 'Silence this input entirely';
     off.addEventListener('change', () => {
       const list = new Set(knobs && knobs.off ? knobs.off : []);
       if (off.checked) list.add(key); else list.delete(key);
@@ -2040,7 +2048,7 @@ function addKnob(key, label, value, max, step, unit, family) {
     });
     const offLabel = el('label', 'knob-off');
     offLabel.setAttribute('for', off.id);
-    offLabel.append(off, 'off');
+    offLabel.append(off, 'silence');
     row.append(offLabel);
   }
   knobRows.set(key, { range, readout, off, unit });
@@ -2098,7 +2106,7 @@ function onSettings(m) {
   $('pauseButton').textContent = m.paused ? 'Resume' : 'Pause';
   const poking = Object.entries(m.poke || {});
   knobsNote.textContent = poking.length
-    ? `poking ${poking.map(([group, ticks]) => `${group} for ${ticks} more`).join(', ')}`
+    ? `stimulating ${poking.map(([group, ticks]) => `${group} for ${ticks} more`).join(', ')}`
     : m.paused ? (m.step ? `stepping ${m.step}` : 'paused: the brain is still, the game waits') : '';
 }
 

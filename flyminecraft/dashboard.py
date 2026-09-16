@@ -4,6 +4,7 @@
 
 GET /             the page (dashboard.html)
 GET /layout.json  every neuron's projected position and super class, and the input/motor groups
+GET /logo.png     the Minecraft Education logo shown in the page header
 WS  /ws           one JSON message per brain tick, plus connection status
 """
 
@@ -22,6 +23,7 @@ from websockets.http11 import Response
 log = logging.getLogger(__name__)
 
 PAGE = Path(__file__).with_name('dashboard.html')
+LOGO = Path(__file__).with_name('minecraft-education-logo.png')  # Minecraft Education, by Mojang/Microsoft
 MAP_SIZE = 1000  # positions are scaled so the longer axis spans 0..MAP_SIZE
 HISTORY = 60     # recent tick summaries replayed to pages opened mid-session
 
@@ -74,6 +76,7 @@ class Dashboard:
         self._on_message = on_message
         self._on_open = on_open
         self._page = PAGE.read_bytes()
+        self._logo = LOGO.read_bytes() if LOGO.exists() else b''
         self._layout = json.dumps(layout, separators=(',', ':')).encode()
         self._clients = set()
         self._latest = {}  # message type -> last message, replayed to pages that open later
@@ -104,6 +107,8 @@ class Dashboard:
             body, kind = self._page, 'text/html; charset=utf-8'
         elif path == '/layout.json':
             body, kind = self._layout, 'application/json'
+        elif path == '/logo.png' and self._logo:
+            body, kind = self._logo, 'image/png'
         else:
             return connection.respond(HTTPStatus.NOT_FOUND, 'Not found\n')
         headers = Headers([('Content-Type', kind), ('Content-Length', str(len(body))),
