@@ -271,12 +271,12 @@ CheckNetIsolation LoopbackExempt -a -n=Microsoft.MinecraftEducationEdition_8weky
 
 ### Speed
 
-One brain simulates at about **31% of realtime** on an RTX 3070: a 200 ms tick
-takes ~0.65 s, so the Agent acts roughly every second. The page's **Brain speed**
+One brain simulates at about **43% of realtime** on an RTX 3070: a 200 ms tick
+takes ~0.47 s, so the Agent acts about twice a second. The page's **Brain speed**
 tile shows this live, as a percentage of a real fly's brain. `--tick_ms 100`
 halves the wait per decision, at the cost of noisier decisions.
 
-Two things make that speed, both in `brain.py` and both exact — the maths is
+Three things make that speed, all in `brain.py` and all exact — the maths is
 unchanged, only the work is:
 
 - **Gathering spikes instead of multiplying the connectome.** About 3 of 138,639
@@ -285,13 +285,28 @@ unchanged, only the work is:
   and sums only those, edge for edge: the same result to the last float, measured.
 - **Capturing the step as a CUDA graph.** A step is ~30 tiny GPU kernels, each
   costing more to launch than to run. Captured once and replayed, the launches go.
+- **Carrying the delay line as a ring.** Synapses deliver 1.8 ms late, so the model
+  keeps 19 steps of traffic and `torch.roll`ed all 19 × 138,639 floats every step —
+  21 MB of copying to advance a queue by one. Writing a single slot and moving an
+  index instead costs one slot. The index lives on the device so a captured graph
+  reads it as it runs.
 
 Measured per 0.1 ms step: 1.21 ms as written (8% of realtime), 0.79 ms with the
-graph alone (13%), 0.33 ms with both (31%). Spikes per step are the same either
-way (2.94). The gather keeps a fixed budget of edge slots so its shapes suit a
-graph; if a step ever needs more, the brain rewinds, widens the budget and runs
-that tick again, so a burst cannot quietly lose edges. Calibration runs ten
-brains at once and keeps the plain matrix path.
+graph alone (13%), 0.34 ms adding the gather (30%), 0.22 ms adding the ring (45%).
+The step is identical to the stock model to the last bit — same spikes, and voltages
+and conductances that differ by exactly zero over hundreds of steps.
+
+One idea that looked obvious and was not: only 1,827 of 138,639 neurons ever receive
+Poisson input, so the other 98.7% are `bernoulli(0)`, a guaranteed zero computed
+anyway. Drawing only for the stimulated neurons measured *slower* (0.343 ms against
+0.337), because the cost is the kernel and the full-width scatter rather than the
+random numbers — and unlike the other three, it would have changed the random stream
+rather than just the work. It was dropped.
+
+The gather keeps a fixed budget of edge slots so its shapes suit a graph; if a step
+ever needs more, the brain rewinds, widens the budget and runs that tick again, so a
+burst cannot quietly lose edges. Calibration runs ten brains at once and keeps the
+plain matrix path.
 
 ## Layout
 

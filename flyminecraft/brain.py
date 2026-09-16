@@ -42,6 +42,15 @@ class GatherModel(ConnectomeModel):
         self.fan_out = (self.crow[1:] - self.crow[:-1]).to(torch.int64)
         self.size = self.weights.shape[0]
         self.overflows = torch.zeros((), dtype=torch.int64, device=self.val.device)
+        # The delay line as a ring: one slot written a step, instead of rolling all 19 x N floats
+        # (21 MB of copying a step). The slot index lives on the device, so a captured graph reads
+        # it as it runs rather than baking it in.
+        synapse, neuron = self.neurons.synapse, self.neurons.neuron
+        self.depth = synapse.steps_delay + 1
+        self.slot = torch.zeros(1, dtype=torch.long, device=self.val.device)
+        self.syn_factor, self.mem_factor = synapse.time_factor, neuron.time_factor
+        self.v_rest, self.v_reset, self.v_threshold = neuron.v_rest, neuron.v_reset, neuron.v_threshold
+        self.released_at = self.neurons.refrac_steps.unsqueeze(0)
 
     def set_budget(self, budget):
         self.budget = budget
@@ -62,9 +71,28 @@ class GatherModel(ConnectomeModel):
         return summed
 
     def forward(self, rates, conductance, delay_buffer, spikes, v, refrac):
+        """One 0.1 ms step: fly-brain's own alpha-synapse LIF maths, with the delay line as a ring.
+
+        Written out rather than calling AlphaLIF, because the roll sits inside it. Every line is the
+        same arithmetic in the same order, and the result is identical to the last bit, checked
+        against the stock model. The delay line is written in place, so it comes back as it went in.
+        """
         voltage_stim = self.scale * self.poisson(rates)
         recurrent_input = self.scale * self.recurrent(spikes)
-        return self.neurons(recurrent_input, voltage_stim, conductance, delay_buffer, spikes, v, refrac)
+
+        refrac = torch.where(spikes > 0, torch.zeros_like(refrac), refrac + 1)
+        released = (refrac >= self.released_at).float()   # a neuron in its refractory period takes nothing in
+        oldest = delay_buffer.index_select(1, self.slot).squeeze(1)  # what left the synapses tDelay ago
+        conductance_new = conductance * (1 - self.syn_factor) + oldest * released
+        delay_buffer.index_copy_(1, self.slot, recurrent_input.unsqueeze(1))  # the slot just read is free
+        self.slot.add_(1).remainder_(self.depth)
+
+        v_new = v + voltage_stim
+        v_new = v_new + self.mem_factor * (conductance - (v_new - self.v_rest))
+        spikes_new = (v_new - self.v_threshold > 0).float()
+        v_new = v_new - (v_new - self.v_reset) * spikes_new      # a spike resets the membrane
+        conductance_new = conductance_new - conductance_new * spikes_new
+        return conductance_new, delay_buffer, spikes_new, v_new, refrac
 
 
 class LiveBrain:
@@ -99,6 +127,8 @@ class LiveBrain:
     def reset(self):
         """Start a new life: every neuron back at rest, with no input."""
         fresh = self.model.state_init()
+        if self.fast:
+            self.model.slot.zero_()  # rewind the delay ring along with the state it indexes
         if self._graph is not None:
             for held, new in zip(self.state, fresh):  # the graph reads these tensors; keep them
                 held.copy_(new)
@@ -148,7 +178,8 @@ class LiveBrain:
     def _step(self):
         out = self.model(self.rates, *self.state)
         for held, new in zip(self.state, out):
-            held.copy_(new)
+            if held is not new:  # the delay line is written in place; copying it back would cost the saving
+                held.copy_(new)
         self._counts.add_(self.state[2])
 
     def _capture(self):
