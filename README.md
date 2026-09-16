@@ -251,6 +251,13 @@ effect on the next tick, nothing is saved, and **Reset controls** puts it all ba
   the game is doing — the sugar receptors with nothing in front of it, or one side's
   looming detectors with no mob — and watch which motor pool answers.
 
+Drive the sliders hard and the brain stays excited. Stimulating everything at 1000 Hz
+takes it from 5,600 spikes a tick to 490,000, and putting the inputs back does not
+bring it down: it settles at about 98,000 spikes a tick, eighteen times its resting
+rate, and was still there twenty-five ticks later. **Reset** clears it (back to 5,300),
+and nothing else does. Whether that is the model's own runaway excitation or something
+about how the drives are injected is an open question.
+
 ### Building somewhere to experiment
 
 **Build** lays out test ground around the Agent with `fill` commands: a **flat arena**,
@@ -305,8 +312,25 @@ rather than just the work. It was dropped.
 
 The gather keeps a fixed budget of edge slots so its shapes suit a graph; if a step
 ever needs more, the brain rewinds, widens the budget and runs that tick again, so a
-burst cannot quietly lose edges. Calibration runs ten brains at once and keeps the
-plain matrix path.
+burst cannot quietly lose edges. That guard has been fired in anger: under heavy
+stimulation it widened 32,768 to 131,072, re-ran the tick and stayed exact.
+Calibration runs ten brains at once and keeps the plain matrix path.
+
+A second idea that measured well and was still dropped: a smaller budget. The gather
+costs what the budget is, not what the step needs, and a typical step needs 236 edges.
+Measured on an idle card, one budget to a process: 8,192 slots run at 0.178 ms a step
+(56% of realtime) against 0.219 ms (46%) for the 32,768 in use. The catch is what
+happens after the brain has been stimulated hard from the page. It does not calm down
+again: spikes a tick go from 5,600 at rest to 490,000 under stimulation and then sit
+at ~98,000 — still eighteen times baseline twenty-five ticks later — where a step
+needs about 29,000 edges. A budget of 8,192 would overflow on every one of those
+ticks, and each overflow costs the tick being run twice. So the budget stays at the
+only size measured never to overflow in either state, and the speed is left on the
+table.
+
+Timing anything here wants an idle GPU. With the server running alongside, the same
+measurements varied by more than the differences being measured, and one run silently
+timed a widened budget as though it were the narrow one.
 
 ## Layout
 
