@@ -231,6 +231,38 @@ fly has sensed around it, so it grows as the fly explores.
 blocks and every panel, without restarting the server. Type `/connect localhost:8080`
 in the game to start again.
 
+### Playing with the brain
+
+The **Play with the brain** card changes what the fly feels while it runs. Every
+change takes effect on the next tick, nothing is saved, and **Reset knobs** puts it
+all back.
+
+- **Sliders** for each input and drive — walking, seeking, homing, exploring,
+  landing, sugar, bitter, heat, touch, bump, gravity, looming, the body clock, sleep
+  pressure and sleep. A slider scales its group rather than replacing it, so rates
+  that already vary (sleep pressure) keep their shape. Each has an **off** switch
+  that silences that input entirely: turn the walking drive down and watch seeking
+  take the fly instead.
+- **Decision threshold** (how far above baseline a motor pool must fire to win) and
+  **brain time per tick** (longer is steadier, shorter is quicker and noisier).
+- **Pause** and **Step**, to stop on an interesting decision and walk one tick at a time.
+- **Let it sleep** and **Time of day**, to switch sleeping off or tell the fly it is
+  dark whatever the game says, and watch it settle.
+- **Poke**: fire any neuron group at a rate you choose for a few ticks, whatever the
+  game is doing — the sugar receptors with nothing in front of it, or one side's
+  looming detectors with no mob — and watch which motor pool answers.
+
+### Building somewhere to experiment
+
+**Build** lays out test ground around the Agent with `fill` commands: a **flat arena**,
+a **walled arena** it cannot leave, a **maze** of one-block corridors, a **patch** of
+the block it currently seeks, or **clear the air** above the floor. Sizes run from 5 to
+31 blocks across, always centred on the fly.
+
+This replaces blocks in the world, so the page asks before each build and the size is
+capped. The maze is carved so that the fly's own square is always open and every square
+is reachable from it — it cannot be walled in.
+
 If `/connect localhost` cannot reach the server, Windows may be blocking the
 app from connecting to localhost. From an administrator prompt:
 

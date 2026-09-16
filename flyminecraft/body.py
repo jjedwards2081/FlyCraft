@@ -99,6 +99,52 @@ INPUT_LABELS = [
 ]
 
 
+# What the page can turn up or down: key -> (label, default Hz, the input groups it sets).
+# A slider scales those groups by tuned/default, so rates that vary (sleep pressure) keep their shape.
+TUNABLE = [
+    ['walk', 'Walking drive', FORWARD_DRIVE_HZ, ['drive_forward']],
+    ['seek', 'Seeking drive', STEER_DRIVE_HZ, ['drive_seek_left', 'drive_seek_right']],
+    ['home', 'Homing drive', STEER_DRIVE_HZ, ['drive_home_left', 'drive_home_right']],
+    ['explore', 'Exploring drive', GOAL_DRIVE_HZ, ['drive_goal_left', 'drive_goal_right']],
+    ['land', 'Landing drive', LAND_DRIVE_HZ, ['drive_land']],
+    ['sugar', 'Sugar taste', TASTE_HZ, ['sugar']],
+    ['bitter', 'Bitter taste', TASTE_HZ, ['bitter']],
+    ['heat', 'Heat', HEAT_HZ, ['heat']],
+    ['touch', 'Touch', TOUCH_HZ, ['touch_left', 'touch_right']],
+    ['sound', 'Bump (sound)', SOUND_HZ, ['sound']],
+    ['gravity', 'Gravity', GRAVITY_HZ, ['gravity']],
+    ['looming', 'Mob looming', LOOMING_HZ, ['looming_left', 'looming_right']],
+    ['clock', 'Body clock', CLOCK_HZ, ['clock']],
+    ['sleep_need', 'Sleep pressure', SLEEP_NEED_HZ, ['sleep_need']],
+    ['sleep_drive', 'Sleep drive', SLEEP_DRIVE_HZ, ['sleep_drive']],
+]
+DEFAULT_HZ = {key: default for key, _, default, _ in TUNABLE}
+GROUP_FAMILY = {group: key for key, _, _, groups in TUNABLE for group in groups}
+
+
+def adjust(rates, settings):
+    """One tick's input rates with the page's knobs applied: scaled, switched off, and poked.
+
+    settings: {'tuning': {family: Hz}, 'off': [families], 'poke': {group: {'hz': Hz, ...}}}
+    A poke fires a group whatever the game is doing, so the brain can be prodded on its own.
+    """
+    tuning = settings.get('tuning') or {}
+    off = set(settings.get('off') or ())
+    adjusted = {}
+    for name, hz in rates.items():
+        family = GROUP_FAMILY.get(name)
+        if family in off:
+            continue
+        if family in tuning:
+            default = DEFAULT_HZ[family]
+            hz = hz * tuning[family] / default if default else tuning[family]
+        if hz > 0:
+            adjusted[name] = hz
+    for name, poke in (settings.get('poke') or {}).items():
+        adjusted[name] = max(adjusted.get(name, 0.0), float(poke['hz']))
+    return adjusted
+
+
 def classify(block):
     """air | ore | wood | lava | hazard | solid (any other block: stone, dirt, sand...)."""
     name = block.removeprefix('minecraft:')
@@ -356,10 +402,14 @@ def side_box(position, yaw, side, reach, height):
 
 
 class AgentBody:
-    def __init__(self, client, seek):
-        """seek: shared {'target': key of TARGETS}, changed from the page while the fly runs."""
+    def __init__(self, client, seek, settings=None):
+        """seek: shared {'target': key of TARGETS}, changed from the page while the fly runs.
+
+        settings: the page's shared knobs; 'sleep' and 'force_time' are read here.
+        """
         self.client = client
         self.seek = seek
+        self.settings = settings if settings is not None else {}
         self.bumped = False
         self.collected = {}   # block name -> blocks mined and picked up
         self.just_mined = []  # (coordinates, block) mined by the last action
@@ -443,6 +493,11 @@ class AgentBody:
 
     async def _time_of_day(self):
         """(dark, daytime ticks) from the game's own clock, queried every TIME_EVERY ticks."""
+        forced = self.settings.get('force_time')
+        if forced:  # the page is lying to the fly about the time, to watch it settle or rouse
+            self._night = forced == 'night'
+            self._daytime = DUSK + 2000 if self._night else 1000
+            return self._night, self._daytime
         if self._tick % TIME_EVERY == 1:
             body = await self.client.command('time query daytime')
             self._log_once('time', 'time query daytime -> %s', body)
@@ -516,6 +571,12 @@ class AgentBody:
         say when it is dark. Driving the sleep neurons does not quiet this model, so the fly rests
         by having its drives withdrawn in stimulus() (see README).
         """
+        if not self.settings.get('sleep', True):  # the page has switched sleeping off
+            if self._asleep:
+                log.info('Awake: sleeping switched off from the page')
+                self._asleep, self._awake = False, 0
+            self._awake += 1
+            return False
         if self._asleep:
             if not night or disturbed:
                 log.info('Awake: %s', 'disturbed' if disturbed else 'it is light again')

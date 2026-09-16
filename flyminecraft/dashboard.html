@@ -132,6 +132,28 @@ h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .key-mined { width: 9px; height: 9px; margin: 0 2px; border-radius: 1px; background: var(--s5); transform: rotate(45deg); }
 .route-stats { color: var(--ink-2); font-size: 13px; margin-top: 8px; font-variant-numeric: tabular-nums; }
 
+.knob-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 14px; }
+.knob-button {
+  font: inherit; color: var(--ink); background: var(--surface); border: 0; border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--border); padding: 6px 14px; cursor: pointer;
+}
+.knob-button:hover:not(:disabled) { background: var(--page); }
+.knob-button:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+.knob-button:disabled { opacity: 0.5; cursor: default; }
+.knob-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 4px 24px; }
+.knob { display: grid; grid-template-columns: minmax(88px, 34%) minmax(0, 1fr) 58px auto; align-items: center; gap: 8px; }
+.knob-label { color: var(--ink-2); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.knob input[type=range] { width: 100%; accent-color: var(--s1); min-width: 0; }
+.knob-value { color: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+.knob-off { color: var(--muted); font-size: 11px; display: inline-flex; align-items: center; gap: 3px; }
+.knob-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 14px; }
+.knob-row label { color: var(--ink-2); font-size: 13px; }
+.knob-row select, .knob-row input[type=number] {
+  font: inherit; color: var(--ink); background: var(--surface); border: 0; border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--border); padding: 5px 8px;
+}
+.knob-row input[type=number] { width: 78px; }
+
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; color: var(--ink-2); font-size: 12px; }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .legend-hint { color: var(--muted); }
@@ -298,6 +320,47 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       <svg id="lines" tabindex="0" role="img" aria-label="Motor pool scores over recent ticks"></svg>
       <div class="strip-head">Command chosen each tick, oldest to newest (outlined = move was blocked)</div>
       <div id="strip" class="strip"></div>
+    </article>
+
+    <article class="card knobs-card">
+      <h2>Play with the brain</h2>
+      <p class="card-sub">Change what the fly feels, and how decisive it is, while it runs. Every change takes effect on the next tick; nothing here is saved.</p>
+      <div class="knob-actions">
+        <button id="pauseButton" class="knob-button" type="button" disabled>Pause</button>
+        <button id="stepButton" class="knob-button" type="button" disabled title="Run exactly one tick">Step</button>
+        <button id="knobsReset" class="knob-button" type="button" disabled title="Put every knob back where it started">Reset knobs</button>
+        <span id="knobsNote" class="hint" role="status"></span>
+      </div>
+      <div id="knobGrid" class="knob-grid"></div>
+      <div class="knob-row">
+        <label for="sleepToggle">Let it sleep</label>
+        <input type="checkbox" id="sleepToggle" checked disabled>
+        <label for="timeSelect">Time of day</label>
+        <select id="timeSelect" disabled>
+          <option value="">From the game</option>
+          <option value="day">Tell it: daylight</option>
+          <option value="night">Tell it: dark</option>
+        </select>
+        <span class="hint">Lie to the fly about the time, to watch it settle or rouse</span>
+      </div>
+      <div class="knob-row">
+        <label for="pokeGroup">Poke</label>
+        <select id="pokeGroup" disabled></select>
+        <input type="number" id="pokeHz" value="200" min="0" max="1000" step="10" disabled aria-label="Hz to poke with">
+        <span class="hint">Hz for</span>
+        <input type="number" id="pokeTicks" value="3" min="1" max="100" disabled aria-label="ticks to poke for">
+        <span class="hint">ticks</span>
+        <button id="pokeButton" class="knob-button" type="button" disabled>Fire</button>
+        <span class="hint">Fires those neurons whatever the game is doing, and the motor pools answer</span>
+      </div>
+      <div class="knob-row">
+        <label for="buildKind">Build</label>
+        <select id="buildKind" disabled></select>
+        <input type="number" id="buildSize" value="15" min="5" max="31" step="2" disabled aria-label="blocks across">
+        <span class="hint">blocks across, around the fly</span>
+        <button id="buildButton" class="knob-button" type="button" disabled>Build it</button>
+        <span id="buildNote" class="hint" role="status">This changes blocks in your Minecraft world</span>
+      </div>
     </article>
    </div>
 
@@ -1936,6 +1999,144 @@ seekSelect.addEventListener('change', () => {
   }
 });
 
+// ---------- knobs: play with the brain ----------
+const knobGrid = $('knobGrid');
+const pokeGroup = $('pokeGroup');
+const knobsNote = $('knobsNote');
+const KNOB_CONTROLS = ['pauseButton', 'stepButton', 'knobsReset', 'pokeButton', 'sleepToggle',
+                       'timeSelect', 'pokeGroup', 'pokeHz', 'pokeTicks',
+                       'buildKind', 'buildSize', 'buildButton'];
+const knobRows = new Map();  // key -> the slider, its readout and its off switch
+let knobs = null;            // the settings the server last sent
+
+function sendSettings(patch) {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: 'settings', ...patch }));
+  }
+}
+
+function addKnob(key, label, value, max, step, unit, family) {
+  const row = el('div', 'knob');
+  const name = el('label', 'knob-label', label);
+  const range = document.createElement('input');
+  Object.assign(range, { type: 'range', min: 0, max, step, value, id: `knob-${key}` });
+  name.setAttribute('for', range.id);
+  const readout = el('span', 'knob-value', `${value}${unit}`);
+  range.addEventListener('input', () => { readout.textContent = `${range.value}${unit}`; });
+  range.addEventListener('change', () => {
+    const set = Number(range.value);
+    sendSettings(family ? { tuning: { ...(knobs ? knobs.tuning : {}), [key]: set } } : { [key]: set });
+  });
+  row.append(name, range, readout);
+  let off = null;
+  if (family) {
+    off = document.createElement('input');
+    Object.assign(off, { type: 'checkbox', id: `off-${key}` });
+    off.title = 'Switch this input off entirely';
+    off.addEventListener('change', () => {
+      const list = new Set(knobs && knobs.off ? knobs.off : []);
+      if (off.checked) list.add(key); else list.delete(key);
+      sendSettings({ off: [...list] });
+    });
+    const offLabel = el('label', 'knob-off');
+    offLabel.setAttribute('for', off.id);
+    offLabel.append(off, 'off');
+    row.append(offLabel);
+  }
+  knobRows.set(key, { range, readout, off, unit });
+  knobGrid.append(row);
+}
+
+function buildKnobs(m) {
+  knobGrid.replaceChildren();
+  knobRows.clear();
+  addKnob('threshold_hz', 'Decision threshold', m.threshold_hz, 50, 0.5, ' Hz', false);
+  addKnob('tick_ms', 'Brain time per tick', m.tick_ms, 1000, 10, ' ms', false);
+  for (const [key, label, value] of m.tunable) {
+    addKnob(key, label, m.tuning[key] ?? value, Math.max(100, Math.round(value * 3)), 1, ' Hz', true);
+  }
+  pokeGroup.replaceChildren(...m.groups.map(([value, label]) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    return option;
+  }));
+  const buildKind = $('buildKind');
+  buildKind.replaceChildren(...(m.builds || []).map(([value, label, hint]) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    option.title = hint;
+    return option;
+  }));
+  const [low, high] = m.build_size || [5, 31];
+  Object.assign($('buildSize'), { min: low, max: high });
+}
+
+// The server is building, or cannot
+function onBuild(m) {
+  $('buildNote').textContent = m.note || '';
+  $('buildButton').disabled = m.state === 'running' || !(socket && socket.readyState === WebSocket.OPEN);
+}
+
+function onSettings(m) {
+  const first = !knobs;
+  knobs = m;
+  if (first) buildKnobs(m);
+  for (const [key, row] of knobRows) {
+    const value = key === 'threshold_hz' ? m.threshold_hz
+      : key === 'tick_ms' ? m.tick_ms
+      : m.tuning[key] ?? (m.tunable.find(t => t[0] === key) || [])[2];
+    if (document.activeElement !== row.range) {  // never fight a slider being dragged
+      row.range.value = value;
+      row.readout.textContent = `${value}${row.unit}`;
+    }
+    if (row.off) row.off.checked = (m.off || []).includes(key);
+  }
+  $('sleepToggle').checked = m.sleep;
+  $('timeSelect').value = m.force_time || '';
+  $('pauseButton').textContent = m.paused ? 'Resume' : 'Pause';
+  const poking = Object.entries(m.poke || {});
+  knobsNote.textContent = poking.length
+    ? `poking ${poking.map(([group, ticks]) => `${group} for ${ticks} more`).join(', ')}`
+    : m.paused ? (m.step ? `stepping ${m.step}` : 'paused: the brain is still, the game waits') : '';
+}
+
+function setKnobsEnabled(on) {
+  for (const id of KNOB_CONTROLS) $(id).disabled = !on;
+  for (const { range, off } of knobRows.values()) {
+    range.disabled = !on;
+    if (off) off.disabled = !on;
+  }
+}
+
+$('pauseButton').addEventListener('click', () => sendSettings({ paused: !(knobs && knobs.paused) }));
+$('stepButton').addEventListener('click', () => {
+  if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'step' }));
+});
+$('sleepToggle').addEventListener('change', e => sendSettings({ sleep: e.target.checked }));
+$('timeSelect').addEventListener('change', e => sendSettings({ force_time: e.target.value || null }));
+$('knobsReset').addEventListener('click', () => {
+  const back = (knobs && knobs.defaults) || {};
+  sendSettings({ tuning: {}, off: [], sleep: true, force_time: null, ...back });
+});
+$('pokeButton').addEventListener('click', () => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: 'poke', group: pokeGroup.value,
+                               hz: Number($('pokeHz').value), ticks: Number($('pokeTicks').value) }));
+});
+
+$('buildButton').addEventListener('click', () => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  const kind = $('buildKind');
+  const size = Number($('buildSize').value);
+  const what = kind.options[kind.selectedIndex] ? kind.options[kind.selectedIndex].textContent : kind.value;
+  if (!confirm(`Build "${what}", ${size} blocks across, around the fly?\n\n`
+             + 'This replaces blocks in your Minecraft world.')) return;
+  socket.send(JSON.stringify({ type: 'build', kind: kind.value, size }));
+  $('buildNote').textContent = 'building…';
+});
+
 // ---------- reset ----------
 const resetButton = $('resetButton');
 const resetNote = $('resetNote');
@@ -1991,6 +2192,7 @@ function connect() {
   ws.onopen = () => {
     setPill('linkPill', 'good', '✓', 'Live');
     resetButton.disabled = false;
+    setKnobsEnabled(true);
   };
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
@@ -2001,11 +2203,14 @@ function connect() {
     else if (m.type === 'map') onMap(m);
     else if (m.type === 'map_step') onMapStep(m);
     else if (m.type === 'reset') onReset();
+    else if (m.type === 'settings') onSettings(m);
+    else if (m.type === 'build') onBuild(m);
   };
   ws.onclose = () => {
     if (socket === ws) socket = null;
     seekSelect.disabled = true;
     resetButton.disabled = true;
+    setKnobsEnabled(false);
     setPill('linkPill', 'critical', '!', 'Server offline, retrying');
     setPill('gamePill', 'muted', '○', 'Waiting for Minecraft');
     setTimeout(connect, 2000);
