@@ -31,6 +31,15 @@ SENSORY_GROUPS = {
     # Looming-sensitive visual projection neurons: an approaching mob, on that side of the fly
     'looming_left':  ('cell_type', ['LC4', 'LPLC2'], 'left'),
     'looming_right': ('cell_type', ['LC4', 'LPLC2'], 'right'),
+    # The fly's own state rather than the world: its body clock, how long it has been awake, and
+    # the sleep neurons. Driving these does not quiet this model (measured; see README), so the
+    # body withdraws its drives to rest the fly while these still run.
+    'clock':       ('cell_type', ['l-LNv', 's-LNv_a', 's-LNv_b', 'LNd_a', 'LNd_b', 'LNd_c',
+                                  'DN1a', 'DN1pA', 'DN1pB', 'DN1-l'], None),   # circadian clock
+    'sleep_need':  ('cell_type', 'ER5', None),                                 # sleep pressure builds here
+    # Dorsal fan-shaped body: the 23E10 sleep-promoting types that this annotation table names
+    'sleep_drive': ('cell_type', ['FB6A', 'FB6C', 'FB6H', 'FB6I', 'FB6M', 'FB6V',
+                                  'FB7A', 'FB7B', 'FB7K'], None),
 }
 
 # Internal drives: the only inputs that do not come from senses. No sensory class in the
@@ -43,6 +52,14 @@ DRIVE_GROUPS = {
     'drive_home_right': ('cell_type', ['DNa01', 'DNa02'], 'right'),
     'drive_seek_left':  ('cell_type', ['DNa01', 'DNa02'], 'left'),    # steer towards the sought block
     'drive_seek_right': ('cell_type', ['DNa01', 'DNa02'], 'right'),
+    # Menotaxis: hold one compass heading, so the fly leaves the ground it has already searched.
+    # A fly does this in its central complex, comparing a goal (FC2) against its heading (E-PG) to
+    # steer through PFL3. That comparison needs the E-PG bump, and this model holds no activity at
+    # all once a drive stops (measured: 0 Hz within 400 ms), so driving FC2 by side steers nothing
+    # (measured: the turn it produces flips side with dose). The heading is kept in the body instead,
+    # and pushed onto the same steering neurons the other drives use.
+    'drive_goal_left':  ('cell_type', ['DNa01', 'DNa02'], 'left'),
+    'drive_goal_right': ('cell_type', ['DNa01', 'DNa02'], 'right'),
     'drive_land':       ('cell_type', 'MDN', None),                   # nothing solid below: come down
 }
 

@@ -9,6 +9,7 @@ No behaviour is scripted: senses and drives compete inside the connectome.
 import asyncio
 import logging
 import math
+import random
 import re
 from dataclasses import dataclass, field
 
@@ -27,9 +28,16 @@ LOOMING_HZ = 40.0   # an approaching mob: take-off with a turn away from that si
 FORWARD_DRIVE_HZ = 30.0   # onto DNp09; senses must out-compete this to stop walking
 STEER_DRIVE_HZ = 35.0     # onto DNa on one side: towards the sought block, or back to the player
 LAND_DRIVE_HZ = 40.0      # onto MDN when nothing is below the fly
+GOAL_DRIVE_HZ = 35.0      # onto DNa on one side: turn back onto the heading the fly is holding
 
 HOME_RANGE = 10       # blocks from the player before the homing drive starts
 STEER_REST_TICKS = 3  # ticks steering rests after a turn, so a 90-degree body walks between turns
+GOAL_BOUT_TICKS = 45    # ticks the fly holds one heading before choosing another (a menotaxis bout)
+GOAL_BLOCKED_TICKS = 4  # moves blocked in a row before it gives up on that heading
+SLEEP_AFTER_TICKS = 40  # ticks awake before the fly will settle for the night (ER5 builds this up)
+CLOCK_HZ = 30.0         # clock neurons, while the game says it is dark
+SLEEP_NEED_HZ = 100.0   # ER5 ring neurons, scaled by how long the fly has been awake
+SLEEP_DRIVE_HZ = 100.0  # dorsal fan-shaped body sleep neurons, while it sleeps
 MOB_RANGE = 8         # blocks within which a hostile mob looms
 ITEM_RANGE = 3        # blocks within which dropped items can be tasted
 ITEM_REST_TICKS = 10  # ticks item taste adapts after collecting found nothing to mine, so unreachable drops don't hold the fly
@@ -70,6 +78,11 @@ INPUT_LABELS = [
     ['drive_forward', 'Walking drive'],
     ['drive_seek_left', 'Seeking drive, left'],
     ['drive_seek_right', 'Seeking drive, right'],
+    ['drive_goal_left', 'Exploring drive, left'],
+    ['drive_goal_right', 'Exploring drive, right'],
+    ['clock', 'Body clock (night)'],
+    ['sleep_need', 'Sleep pressure'],
+    ['sleep_drive', 'Sleep (fan-shaped body)'],
     ['drive_home_left', 'Homing drive, left'],
     ['drive_home_right', 'Homing drive, right'],
     ['drive_land', 'Landing drive'],
@@ -125,6 +138,8 @@ class Senses:
     fresh: tuple = ('left', 'right')  # sides whose contact is new since the last tick (touch adapts)
     seen: tuple | None = None # (blocks away, bearing) of the nearest one scanned
     seek: str | None = None   # side the seeking drive steers to
+    goal: str | None = None   # side to turn to get back onto the heading it is holding
+    heading: int | None = None  # index into HEADINGS of that heading
     bumped: bool = False      # the last move failed
     mob_left: bool = False    # a hostile mob within MOB_RANGE on that side
     mob_right: bool = False
@@ -133,6 +148,10 @@ class Senses:
     player: str = 'unknown'   # near | left | right | behind | ahead | unknown
     homing: str | None = None # side the homing drive steers to
     night: bool | None = None
+    asleep: bool = False      # resting for the night: its drives are switched off
+    pressure: float = 0.0     # 0..1, how long it has been awake (sleep pressure)
+    position: tuple | None = None  # the Agent's block (x, y, z) when sensed, if Minecraft reported it
+    yaw: float = 0.0
 
 
 def steer_towards(where):
@@ -171,8 +190,20 @@ def stimulus(senses):
         rates[f'drive_home_{senses.homing}'] = STEER_DRIVE_HZ
     elif senses.seek:
         rates[f'drive_seek_{senses.seek}'] = STEER_DRIVE_HZ
+    elif senses.goal:
+        rates[f'drive_goal_{senses.goal}'] = GOAL_DRIVE_HZ  # nothing to chase: hold the heading
     if classify(senses.down) == 'air' and not senses.bumped:
         rates['drive_land'] = LAND_DRIVE_HZ  # a fly still clinging to an obstacle keeps climbing
+    if senses.night:
+        rates['clock'] = CLOCK_HZ       # the clock neurons run on the day, not on anything sensed
+    if senses.pressure:
+        rates['sleep_need'] = SLEEP_NEED_HZ * senses.pressure  # ER5: the longer awake, the stronger
+    if senses.asleep:
+        # A sleeping fly still hears and feels (a thud wakes it), but its drives are switched off.
+        # Driving the sleep neurons does not quiet this model, so withdrawing the drives is what rests it.
+        rates['sleep_drive'] = SLEEP_DRIVE_HZ
+        for name in [n for n in rates if n.startswith('drive_') or n == 'sugar']:
+            del rates[name]
     return rates
 
 
@@ -207,8 +238,19 @@ def world_facts(senses):
         mobs = 'none nearby'
     time = 'unknown' if senses.night is None else ('night' if senses.night else 'day')
     footing = 'in the air' if classify(senses.down) == 'air' else f"on {senses.down.replace('_', ' ')}"
+    if senses.heading is None:
+        exploring = 'no heading yet'
+    else:
+        exploring = f'holding {HEADING_NAMES[senses.heading]}'
+        exploring += f', turning {senses.goal} onto it' if senses.goal else ' (facing it)'
+    if senses.asleep:
+        sleep = 'asleep: resting until it gets light, or something disturbs it'
+    else:
+        sleep = f'awake, sleep pressure {senses.pressure:.0%}'
     return [
+        ['Sleep', sleep],
         ['Seeking', seeking],
+        ['Exploring', exploring],
         ['Player', PLAYER_TEXT[senses.player]],
         ['Hostile mobs', mobs],
         ['Dropped items', ('nearby' if senses.items_fresh else 'nearby, out of reach (ignored for now)')
@@ -247,6 +289,7 @@ MOVES = ('forward', 'descend')  # take-off climbs (AgentBody._climb); feeding mi
 # Bedrock yaw -> (dx, dz) of the block in front: 0 = south (+z), 90 = west, 180 = north, 270 = east.
 # Education's agent inspect/detect return no block data, so blocks are read with testforblock.
 HEADINGS = [(0, 1), (-1, 0), (0, -1), (1, 0)]
+HEADING_NAMES = ('south', 'west', 'north', 'east')  # HEADINGS, in the same order
 SIDE_OFFSET = {'ahead': 0, 'right': 1, 'behind': 2, 'left': 3}  # quarter turns clockwise from ahead
 COMPASS = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)]
 # Failure message names the block that is there, e.g. "The block at 1,2,3 is Iron Ore (expected: Air)."
@@ -260,6 +303,19 @@ def neighbourhood(position, yaw):
     i = round(yaw / 90) % 4
     (fx, fz), (rx, rz) = HEADINGS[i], HEADINGS[(i + 1) % 4]
     return {(r, u, a): (x + a * fx + r * rx, y + u, z + a * fz + r * rz) for r, u, a in AROUND}
+
+
+def facing(yaw):
+    """(dx, dz) of the direction the Agent faces."""
+    return HEADINGS[round(yaw / 90) % 4]
+
+
+def world_blocks(senses):
+    """World coordinates -> block for the cube sensed around the fly ({} if its position is unknown)."""
+    if senses.position is None:
+        return {}
+    coords = neighbourhood(senses.position, senses.yaw)
+    return {coords[offset]: block for offset, block in senses.cube.items()}
 
 
 def bearing(position, yaw, point):
@@ -293,6 +349,7 @@ class AgentBody:
         self.seek = seek
         self.bumped = False
         self.collected = {}   # block name -> blocks mined and picked up
+        self.just_mined = []  # (coordinates, block) mined by the last action
         self.position = None  # (x, y, z) from the last sense, reused as the pre-move position
         self.around = None    # contact coordinates from the last sense
         self._tick = 0
@@ -301,6 +358,11 @@ class AgentBody:
         self._next_scan = 0
         self._steer_rest = 0  # ticks left before steering may turn the fly again
         self._item_rest = 0   # ticks left before dropped items taste sweet again
+        self._goal = None     # index into HEADINGS: the compass heading it is holding
+        self._goal_ticks = 0  # ticks left on that heading
+        self._blocked = 0     # moves blocked in a row
+        self._awake = 0       # ticks awake, building sleep pressure
+        self._asleep = False
         self._contacts = {}   # side -> (coordinates, block) touched last tick
         self._night = None
         self._logged = set()
@@ -421,13 +483,55 @@ class AgentBody:
             seen = (round(math.dist(self.position, self._sought)), where)
             if steering_free and not homing:
                 seek = steer_towards(where)
-        return Senses(**blocks, cube=cube, target=target, eating=eating, fresh=fresh, seen=seen, seek=seek, bumped=self.bumped,
+        asleep = self._sleep(night, mob_left or mob_right or self.bumped)
+        # Nothing to chase and nobody to walk back to: hold a heading, and so leave ground already searched
+        goal = (None if (asleep or eating or homing or seek or self._sought)
+                else self._hold_heading(yaw, steering_free))
+        return Senses(**blocks, cube=cube, target=target, eating=eating, fresh=fresh, seen=seen, seek=seek,
+                      goal=goal, heading=self._goal, bumped=self.bumped,
                       mob_left=mob_left, mob_right=mob_right, items_near=items_near,
-                      items_fresh=not self._item_rest, player=player,
-                      homing=homing, night=night)
+                      items_fresh=not self._item_rest, player=player, asleep=asleep,
+                      pressure=min(1.0, self._awake / SLEEP_AFTER_TICKS),
+                      homing=homing, night=night, position=self.position, yaw=yaw)
+
+    def _sleep(self, night, disturbed):
+        """Rest at night once the fly has been awake a while; a thud or a mob wakes it.
+
+        Sleep pressure builds while it is awake (ER5 carries that in a fly) and the clock neurons
+        say when it is dark. Driving the sleep neurons does not quiet this model, so the fly rests
+        by having its drives withdrawn in stimulus() (see README).
+        """
+        if self._asleep:
+            if not night or disturbed:
+                log.info('Awake: %s', 'disturbed' if disturbed else 'the night is over')
+                self._asleep, self._awake = False, 0
+        elif night and not disturbed and self._awake >= SLEEP_AFTER_TICKS:
+            log.info('Asleep: dark, and awake for %d ticks', self._awake)
+            self._asleep = True
+        if not self._asleep:
+            self._awake += 1
+        return self._asleep
+
+    def _hold_heading(self, yaw, steering_free):
+        """Menotaxis: keep one compass heading for a bout, then choose another.
+
+        This is how a fly reaches new ground: it holds an arbitrary heading rather than remembering
+        where it has been. The heading is kept here because the modelled brain cannot hold one, and
+        it is pushed onto the same steering neurons as the other drives (see neurons.py).
+        """
+        if self._goal is None or not self._goal_ticks or self._blocked >= GOAL_BLOCKED_TICKS:
+            self._goal = random.choice([h for h in range(len(HEADINGS)) if h != self._goal])
+            self._goal_ticks, self._blocked = GOAL_BOUT_TICKS, 0
+            log.info('Exploring: holding %s', HEADING_NAMES[self._goal])
+        self._goal_ticks -= 1
+        if not steering_free:
+            return None
+        # turning right is a quarter turn clockwise through HEADINGS; 0 means it already faces the heading
+        return {1: 'right', 2: 'right', 3: 'left'}.get((self._goal - round(yaw / 90)) % len(HEADINGS))
 
     async def act(self, action, senses):
         """Perform the action; return True if it happened in the world."""
+        self.just_mined = []
         if action == 'feed':
             ok, bumped = await self._eat(senses), False
         elif action == 'takeoff':
@@ -440,7 +544,8 @@ class AgentBody:
             self._item_rest = ITEM_REST_TICKS  # collecting found nothing to mine: stop tasting those drops
         elif self._item_rest:
             self._item_rest -= 1
-        if action in ('turn_left', 'turn_right') and (senses.homing or senses.seek):
+        self._blocked = self._blocked + 1 if bumped else 0
+        if action in ('turn_left', 'turn_right') and (senses.homing or senses.seek or senses.goal):
             self._steer_rest = STEER_REST_TICKS  # walk a little before steering again
         elif self._steer_rest:
             self._steer_rest -= 1
@@ -468,8 +573,10 @@ class AgentBody:
                 block = getattr(senses, side)
                 self.collected[block] = self.collected.get(block, 0) + 1
                 mined += 1
-                if self.around and self.around[side] == self._sought:
-                    self._sought, self._next_scan = None, 0
+                if self.around:
+                    self.just_mined.append((self.around[side], block))
+                    if self.around[side] == self._sought:
+                        self._sought, self._next_scan = None, 0
             else:
                 self._log_once('destroy', 'agent destroy %s left the %s in place', side, getattr(senses, side))
         if mined:

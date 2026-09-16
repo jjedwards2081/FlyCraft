@@ -57,6 +57,15 @@ h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .controls select:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
 .controls select:disabled { opacity: 0.5; cursor: default; }
 .controls .hint { color: var(--muted); font-size: 12px; }
+.reset-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-left: auto; }
+.reset-button {
+  font: inherit; font-weight: 600; color: var(--ink); background: var(--surface);
+  border: 0; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--critical);
+  padding: 6px 16px; cursor: pointer;
+}
+.reset-button:hover:not(:disabled) { background: rgba(208, 59, 59, 0.18); }
+.reset-button:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+.reset-button:disabled { opacity: 0.5; cursor: default; }
 .pill {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 10px; border-radius: 999px;
@@ -83,21 +92,15 @@ h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .hero-value { font-size: 48px; font-weight: 600; line-height: 1.1; }
 .swatch { width: 14px; height: 14px; border-radius: 4px; background: var(--grid); flex: none; }
 
-.grid {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-.map-card { grid-column: 1; grid-row: 1 / span 2; }
-.senses-card { grid-column: 2; grid-row: 1; }
-.motor-card { grid-column: 2; grid-row: 2; }
-.history-card { grid-column: 1; grid-row: 3 / span 2; }
-.inputs-card { grid-column: 2; grid-row: 3; }
-.classes-card { grid-column: 2; grid-row: 4; }
+/* Two columns that each stack their own cards, so a short card never leaves a hole beside a tall one */
+.grid { display: flex; align-items: flex-start; gap: 16px; }
+.column { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.column.wide { flex: 2 1 0; }
+.column.narrow { flex: 1 1 0; }
 @media (max-width: 960px) {
-  .grid { grid-template-columns: minmax(0, 1fr); }
-  .grid > .card { grid-column: 1; grid-row: auto; }
+  .grid { display: block; }
+  .column { display: contents; }
+  .grid > .column > .card { margin-bottom: 16px; }
 }
 
 .map-wrap {
@@ -114,6 +117,20 @@ h2 { margin: 0; font-size: 14px; font-weight: 600; }
   text-shadow: 0 0 3px var(--surface), 0 0 3px var(--surface), 0 0 6px var(--surface);
 }
 .gl-note { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 13px; padding: 16px; text-align: center; }
+
+.route-wrap {
+  position: relative; width: 100%; max-width: 100%; aspect-ratio: 3 / 2;
+  border-radius: 8px; overflow: hidden; background: var(--page);
+}
+@media (max-width: 600px) { .route-wrap { aspect-ratio: 1 / 1; } }
+.route-wrap canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+#routeOverlay { cursor: grab; touch-action: none; outline: none; }
+#routeOverlay.dragging { cursor: grabbing; }
+#routeOverlay:focus-visible { box-shadow: inset 0 0 0 2px var(--s1); }
+.route-note { position: absolute; left: 12px; bottom: 10px; color: var(--muted); font-size: 12px; pointer-events: none; }
+.key-route { width: 18px; height: 3px; border-radius: 2px; background: var(--ink); }
+.key-mined { width: 9px; height: 9px; margin: 0 2px; border-radius: 1px; background: var(--s5); transform: rotate(45deg); }
+.route-stats { color: var(--ink-2); font-size: 13px; margin-top: 8px; font-variant-numeric: tabular-nums; }
 
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; color: var(--ink-2); font-size: 12px; }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; }
@@ -214,6 +231,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     <label for="seekSelect">Seek block</label>
     <select id="seekSelect" disabled><option>Connecting…</option></select>
     <span class="hint">The fly steers towards this block, and mines and collects it on contact</span>
+    <div class="reset-group">
+      <span id="resetNote" class="hint" role="status"></span>
+      <button id="resetButton" class="reset-button" type="button" disabled
+              title="Disconnect Minecraft, rest the brain, and clear the map and collected blocks">Reset</button>
+    </div>
   </div>
 
   <section class="tiles">
@@ -240,6 +262,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   </section>
 
   <section class="grid">
+   <div class="column wide">
     <article class="card map-card">
       <h2>Brain activity</h2>
       <p class="card-sub">Every neuron of the connectome in 3D. Each one that fires lights up, then fades. Hover to inspect a neuron.</p>
@@ -256,6 +279,29 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       </div>
     </article>
 
+    <article class="card route-card">
+      <h2>Where the fly has been</h2>
+      <p class="card-sub">Its route through the Minecraft world, the terrain it has sensed on the way, and the blocks it has mined. The map follows the fly.</p>
+      <div id="routeWrap" class="route-wrap">
+        <canvas id="route3d" aria-hidden="true"></canvas>
+        <canvas id="routeOverlay" tabindex="0" role="img" aria-label="3D map of the fly's route, the terrain it sensed and the blocks it mined"></canvas>
+        <div id="routeNote" class="route-note" hidden>This browser cannot draw the terrain (WebGL is unavailable). The route and mined blocks still show.</div>
+      </div>
+      <div id="routeLegend" class="legend"></div>
+      <div id="routeStats" class="route-stats"></div>
+    </article>
+
+    <article class="card history-card">
+      <h2>Decisions over time</h2>
+      <p class="card-sub">Motor pool scores for the last 40 ticks, in Hz above baseline</p>
+      <div id="motorLegend" class="legend" style="margin: 0 0 8px"></div>
+      <svg id="lines" tabindex="0" role="img" aria-label="Motor pool scores over recent ticks"></svg>
+      <div class="strip-head">Command chosen each tick, oldest to newest (outlined = move was blocked)</div>
+      <div id="strip" class="strip"></div>
+    </article>
+   </div>
+
+   <div class="column narrow">
     <article class="card senses-card">
       <h2>What the fly senses</h2>
       <p class="card-sub">The 26 blocks around the Agent, on its level and above and below. It can mine the six touching its faces.</p>
@@ -274,15 +320,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       <div id="motorBars" class="bars"><div class="empty-note">No ticks yet</div></div>
     </article>
 
-    <article class="card history-card">
-      <h2>Decisions over time</h2>
-      <p class="card-sub">Motor pool scores for the last 40 ticks, in Hz above baseline</p>
-      <div id="motorLegend" class="legend" style="margin: 0 0 8px"></div>
-      <svg id="lines" tabindex="0" role="img" aria-label="Motor pool scores over recent ticks"></svg>
-      <div class="strip-head">Command chosen each tick, oldest to newest (outlined = move was blocked)</div>
-      <div id="strip" class="strip"></div>
-    </article>
-
     <article class="card inputs-card">
       <h2>Senses and drives in</h2>
       <p class="card-sub">Poisson input rate into each neuron group</p>
@@ -294,6 +331,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
       <p class="card-sub">Mean firing rate across every neuron in each class</p>
       <div id="classBars" class="bars"><div class="empty-note">No ticks yet</div></div>
     </article>
+   </div>
   </section>
 
   <details class="card table-view">
@@ -508,21 +546,21 @@ void main() {
   }
 }`;
 
-function compile(type, src) {
-  const s = gl.createShader(type);
-  gl.shaderSource(s, src);
-  gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+function compile(ctx, type, src) {
+  const s = ctx.createShader(type);
+  ctx.shaderSource(s, src);
+  ctx.compileShader(s);
+  if (!ctx.getShaderParameter(s, ctx.COMPILE_STATUS)) throw new Error(ctx.getShaderInfoLog(s));
   return s;
 }
-function program(vs, fs, attribs) {
-  const p = gl.createProgram();
-  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
-  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
-  attribs.forEach((name, i) => gl.bindAttribLocation(p, i, name));
-  gl.linkProgram(p);
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
-  p.u = name => gl.getUniformLocation(p, name);
+function program(ctx, vs, fs, attribs) {
+  const p = ctx.createProgram();
+  ctx.attachShader(p, compile(ctx, ctx.VERTEX_SHADER, vs));
+  ctx.attachShader(p, compile(ctx, ctx.FRAGMENT_SHADER, fs));
+  attribs.forEach((name, i) => ctx.bindAttribLocation(p, i, name));
+  ctx.linkProgram(p);
+  if (!ctx.getProgramParameter(p, ctx.LINK_STATUS)) throw new Error(ctx.getProgramInfoLog(p));
+  p.u = name => ctx.getUniformLocation(p, name);
   return p;
 }
 
@@ -544,7 +582,8 @@ function perspective(fovy, aspect, near, far) {
 }
 function rotX(t) { const c = Math.cos(t), s = Math.sin(t); return new Float32Array([1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1]); }
 function rotY(t) { const c = Math.cos(t), s = Math.sin(t); return new Float32Array([c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]); }
-function translateZ(z) { return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, z, 1]); }
+function translate(x, y, z) { return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]); }
+function translateZ(z) { return translate(0, 0, z); }
 
 const FOV = 30 * Math.PI / 180;
 function mvp() {
@@ -564,8 +603,8 @@ function setupBrain() {
   gl = canvas.getContext('webgl', { antialias: false, alpha: false, premultipliedAlpha: true });
   if (!gl) { canvas.hidden = true; $('glNote').hidden = false; return; }
   try {
-    pointProg = program(POINT_VS, POINT_FS, ['aPos', 'aHeat']);
-    markProg = program(MARK_VS, MARK_FS, ['aPos', 'aColor', 'aSize']);
+    pointProg = program(gl, POINT_VS, POINT_FS, ['aPos', 'aHeat']);
+    markProg = program(gl, MARK_VS, MARK_FS, ['aPos', 'aColor', 'aSize']);
   } catch (err) {
     console.error('3D brain shaders failed:', err);
     gl = null;
@@ -753,6 +792,7 @@ function frame(now) {
   }
 
   if (gl && drawDirty) drawBrain();
+  if (routeDirty) drawRoute();
 }
 
 // ---------- 3D interaction ----------
@@ -1034,37 +1074,47 @@ function whereText([r, u, a]) {
 }
 const faceOf = offset => Object.keys(FACES).find(side => FACES[side].every((v, k) => v === offset[k]));
 
-function cubeRotate([x, y, z]) {
-  const cy = Math.cos(cubeCam.yaw), sy = Math.sin(cubeCam.yaw);
-  const cp = Math.cos(cubeCam.pitch), sp = Math.sin(cubeCam.pitch);
-  const x1 = cy * x + sy * z, z1 = -sy * x + cy * z;
-  return [x1, cp * y - sp * z1, sp * y + cp * z1];
+// A camera orbiting `centre` at `dist`, looking at it: rotate() takes a world point into view space
+// (camera at +dist on z), project() onto the canvas in CSS px (null behind the camera), depth() is the distance
+function makeView(centre, yaw, pitch, dist, focal, w, h) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const dir = ([x, y, z]) => {
+    const x1 = cy * x + sy * z, z1 = -sy * x + cy * z;
+    return [x1, cp * y - sp * z1, sp * y + cp * z1];
+  };
+  const rotate = p => dir([p[0] - centre[0], p[1] - centre[1], p[2] - centre[2]]);
+  return {
+    dist, focal, dir, rotate,
+    project(v) {
+      const d = dist - v[2];
+      return d < 0.05 ? null : [w / 2 + v[0] * focal / d, h / 2 - v[1] * focal / d];
+    },
+    depth(p) { const v = rotate(p); return Math.hypot(v[0], v[1], dist - v[2]); },
+  };
 }
-const cubeFocal = () => Math.min(cubeW, cubeH) * CUBE_DIST / 6.6;
-function cubeProject(v) {
-  const f = cubeFocal();
-  const d = CUBE_DIST - v[2];
-  return [cubeW / 2 + v[0] * f / d, cubeH / 2 - v[1] * f / d];
-}
-const cubeDepth = p => { const v = cubeRotate(p); return Math.hypot(v[0], v[1], CUBE_DIST - v[2]); };
+const cubeView = () => makeView([0, 0, 0], cubeCam.yaw, cubeCam.pitch, CUBE_DIST, Math.min(cubeW, cubeH) * CUBE_DIST / 6.6, cubeW, cubeH);
 
-// The fly at the centre, head towards ahead (-z): a low-poly body, wings and legs, drawn back to front
+// The fly: a low-poly body, wings and legs, drawn back to front. Its model faces -z (ahead in the cube's frame);
+// pose places it at `at`, facing `forward` ([x, z]), `scale` times its model size
 const FLY = {
   head: '#5c4b3f', eye: '#d63a2c', thorax: '#9c7a4e', abdomen: '#c49a5e', stripe: '#4a3727',
   leg: '#7a6552', wing: [215, 228, 240],
 };
 const FLY_SCALE = 1.3;
+const CUBE_POSE = { at: [0, 0, 0], forward: [0, -1], scale: FLY_SCALE };
 const LIGHT = [0.3, 0.85, 0.43];
 
-function drawFly(ctx) {
+function drawFly(ctx, view, pose = CUBE_POSE) {
   const parts = [];  // {depth, draw}
-  const scaled = p => p.map(c => c * FLY_SCALE);
-  const at = p => cubeProject(cubeRotate(p));
+  const [fx, fz] = pose.forward;
+  // model x (right) and -z (ahead) onto the world; right is forward turned clockwise seen from above
+  const turn = ([x, y, z]) => [-x * fz - z * fx, y, x * fx - z * fz];
+  const place = p => turn(p).map((v, k) => pose.at[k] + v * pose.scale);
+  const at = p => view.project(view.rotate(p));
   const shaded = (hex, shade) => `rgb(${hexRgb(hex).map(c => Math.min(255, Math.round(c * shade))).join(',')})`;
 
   // Ellipsoid with its poles on the ahead axis, so each ring is a band around the body (the abdomen's stripes)
-  function ellipsoid(centre, radii, colorOfRing, rings = 8, around = 12) {
-    const c = scaled(centre), r = scaled(radii);
+  function ellipsoid(c, r, colorOfRing, rings = 8, around = 12) {
     const point = (i, j) => {
       const th = Math.PI * i / rings, ph = 2 * Math.PI * j / around;
       return [c[0] + r[0] * Math.sin(th) * Math.cos(ph), c[1] + r[1] * Math.sin(th) * Math.sin(ph), c[2] + r[2] * Math.cos(th)];
@@ -1075,12 +1125,14 @@ function drawFly(ctx) {
         const mid = [0, 1, 2].map(k => quad.reduce((s, p) => s + p[k], 0) / 4);
         const g = mid.map((v, k) => (v - c[k]) / (r[k] * r[k]));
         const len = Math.hypot(...g) || 1;
-        const n = g.map(v => v / len);
-        const nv = cubeRotate(n), mv = cubeRotate(mid);
-        if (nv[0] * -mv[0] + nv[1] * -mv[1] + nv[2] * (CUBE_DIST - mv[2]) <= 0) continue;
+        const n = turn(g.map(v => v / len));
+        const midAt = place(mid);
+        const nv = view.dir(n), mv = view.rotate(midAt);
+        if (nv[0] * -mv[0] + nv[1] * -mv[1] + nv[2] * (view.dist - mv[2]) <= 0) continue;
+        const pts = quad.map(q => at(place(q)));
+        if (pts.includes(null)) continue;
         const color = shaded(colorOfRing(i), 0.5 + 0.55 * Math.max(0, n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]));
-        const pts = quad.map(at);
-        parts.push({ depth: cubeDepth(mid), draw() {
+        parts.push({ depth: view.depth(midAt), draw() {
           const path = polyPath(pts);
           ctx.fillStyle = color;
           ctx.fill(path);
@@ -1092,12 +1144,14 @@ function drawFly(ctx) {
     }
   }
   function segment(a, b, color, width) {
-    const pa = scaled(a), pb = scaled(b);
-    const depth = cubeDepth(pa.map((v, k) => (v + pb[k]) / 2));
-    const [x1, y1] = at(pa), [x2, y2] = at(pb);
+    const pa = place(a), pb = place(b);
+    const depth = view.depth(pa.map((v, k) => (v + pb[k]) / 2));
+    const sa = at(pa), sb = at(pb);
+    if (!sa || !sb) return;
+    const [x1, y1] = sa, [x2, y2] = sb;
     parts.push({ depth, draw() {
       ctx.lineCap = 'round';
-      ctx.lineWidth = Math.max(1, width * FLY_SCALE * cubeFocal() / depth);
+      ctx.lineWidth = Math.max(1, width * pose.scale * view.focal / depth);
       ctx.strokeStyle = color;
       ctx.beginPath();
       ctx.moveTo(x1, y1);
@@ -1106,9 +1160,10 @@ function drawFly(ctx) {
     } });
   }
   function polygon(points, fill) {
-    const ps = points.map(scaled);
+    const ps = points.map(place);
     const pts = ps.map(at);
-    parts.push({ depth: cubeDepth([0, 1, 2].map(k => ps.reduce((s, p) => s + p[k], 0) / ps.length)), draw() {
+    if (pts.includes(null)) return;
+    parts.push({ depth: view.depth([0, 1, 2].map(k => ps.reduce((s, p) => s + p[k], 0) / ps.length)), draw() {
       ctx.fillStyle = fill;
       ctx.fill(polyPath(pts));
     } });
@@ -1160,22 +1215,22 @@ function drawFly(ctx) {
 }
 
 // A box as its camera-facing faces: [{pts, shade}], nearest-first sorting is done by the caller
-function boxFaces(centre, half) {
+function boxFaces(view, centre, half) {
   const faces = [];
   for (let axis = 0; axis < 3; axis++) {
     for (const sign of [-1, 1]) {
       const normal = [0, 0, 0];
       normal[axis] = sign;
       const faceCentre = centre.map((c, k) => c + normal[k] * half);
-      const n = cubeRotate(normal), c = cubeRotate(faceCentre);
-      // camera sits at +CUBE_DIST on the view z axis
-      if (n[0] * -c[0] + n[1] * -c[1] + n[2] * (CUBE_DIST - c[2]) <= 0) continue;
+      const n = view.dir(normal), c = view.rotate(faceCentre);
+      // camera sits at +dist on the view z axis
+      if (n[0] * -c[0] + n[1] * -c[1] + n[2] * (view.dist - c[2]) <= 0) continue;
       const [i, j] = [0, 1, 2].filter(k => k !== axis);
       const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([si, sj]) => {
         const p = faceCentre.slice();
         p[i] += si * half;
         p[j] += sj * half;
-        return cubeProject(cubeRotate(p));
+        return view.project(view.rotate(p));
       });
       // lit from above, a little from the front-right
       const shade = 0.6 + 0.4 * Math.max(0, normal[0] * 0.3 + normal[1] * 0.85 + normal[2] * 0.43);
@@ -1212,18 +1267,16 @@ function renderCube(t) {
     items.push({ offset: [r, u, a], block, kind, centre: toWorld([r, u, a]), half: 0.36 });
   }
   items.push({ fly: true, centre: [0, 0, 0] });
-  for (const item of items) {
-    const v = cubeRotate(item.centre);
-    item.depth = Math.hypot(v[0], v[1], CUBE_DIST - v[2]);
-  }
+  const view = cubeView();
+  for (const item of items) item.depth = view.depth(item.centre);
   items.sort((p, q) => q.depth - p.depth);  // farthest first
 
   const ink = hexRgb(cssVar('--ink'));
   const rgba = (rgb, shade, alpha) => `rgba(${rgb.map(c => Math.round(c * shade)).join(',')},${alpha})`;
   cubeHits = [];
   for (const item of items) {
-    if (item.fly) { drawFly(ctx); continue; }
-    const faces = boxFaces(item.centre, item.half);
+    if (item.fly) { drawFly(ctx, view); continue; }
+    const faces = boxFaces(view, item.centre, item.half);
     const side = item.offset && faceOf(item.offset);
     const mineable = side && item.kind === 'target';
     let rgb, fillA, strokeA = 0.85, lineW = 1;
@@ -1260,7 +1313,7 @@ function renderCube(t) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (const [text, p] of [['Ahead', [0, 0, -2.05]], ['Above', [0, 1.95, 0]], ['Left', [-2.1, 0, 0]], ['Right', [2.1, 0, 0]]]) {
-    const [x, y] = cubeProject(cubeRotate(p));
+    const [x, y] = view.project(view.rotate(p));
     ctx.lineWidth = 4;
     ctx.strokeStyle = cssVar('--page');
     ctx.strokeText(text, x, y);
@@ -1340,6 +1393,353 @@ function setupCube() {
   agentKey.style.background = `linear-gradient(90deg, ${FLY.eye} 30%, ${FLY.thorax} 30%)`;
   agent.append(agentKey, 'The fly, head pointing ahead');
   legend.append(air, agent, el('span', 'legend-item legend-hint', 'White outline = can mine. Drag or arrow keys to rotate, double-click to reset'));
+}
+
+// ---------- 3D map of where the fly has been ----------
+// Minecraft's axes: x east, y up, z south. Block (x, y, z) fills x..x+1, y..y+1, z..z+1.
+// Terrain is drawn with WebGL; the route, mined blocks, compass and the fly on a 2D canvas over it, so they always show.
+const BLOCK_COLORS = [
+  [/water/, '#3f76e4'], [/lava|magma/, '#e8641c'], [/ice/, '#9cc4f0'], [/snow/, '#eef3f6'],
+  [/coal_ore/, '#3b3b3b'], [/iron_ore/, '#d8af93'], [/copper_ore/, '#c0714f'], [/gold_ore/, '#f2cf3c'],
+  [/diamond_ore/, '#5decf5'], [/redstone_ore/, '#c81e1e'], [/lapis_ore/, '#2f57b8'], [/emerald_ore/, '#17c544'],
+  [/_ore$|ancient_debris/, '#a38bd9'],
+  [/leaves|grass|moss|fern|vine|kelp|cactus|lily|bush|sapling/, '#5b9a3c'],
+  [/sand/, '#dccf9a'],
+  [/log|wood|stem|hyphae|plank/, '#8a6a3f'],
+  [/gravel/, '#8a8580'], [/clay/, '#a0a6b3'],
+  [/dirt|mud|podzol|farmland|path|mycelium/, '#866043'],
+  [/deepslate|tuff|basalt|blackstone|bedrock|obsidian/, '#4d4d52'],
+  [/granite/, '#9a6c5a'], [/diorite|calcite|quartz/, '#c9c9c9'],
+  [/stone|cobble|andesite/, '#8d8d8d'],
+  [/flower|dandelion|poppy|tulip|orchid|allium|daisy|rose|lilac|peony/, '#e0c341'],
+];
+const OTHER_BLOCK = '#9a9a9a';
+const ROUTE_VIEW = { yaw: -0.6, pitch: 0.8, dist: 26 };
+const FACE_NORMALS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+const FACE_CORNERS = [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]];  // two triangles
+const TERRAIN_VS = `
+attribute vec3 aPos;
+attribute vec3 aColor;
+attribute vec2 aUv;
+uniform mat4 uMVP;
+varying vec3 vColor;
+varying vec2 vUv;
+void main() {
+  gl_Position = uMVP * vec4(aPos, 1.0);
+  vColor = aColor;
+  vUv = aUv;
+}`;
+// Each face darkens towards its edges so blocks read as blocks; uEdge fades that out when zoomed far out
+const TERRAIN_FS = `
+precision mediump float;
+varying vec3 vColor;
+varying vec2 vUv;
+uniform float uEdge;
+void main() {
+  vec2 e = min(vUv, 1.0 - vUv);
+  float line = 1.0 - smoothstep(0.02, 0.09, min(e.x, e.y));
+  gl_FragColor = vec4(vColor * (1.0 - uEdge * line), 1.0);
+}`;
+const routeWrap = $('routeWrap');
+const routeCanvas = $('route3d');
+const routeOverlay = $('routeOverlay');
+const routeCtx = routeOverlay.getContext('2d');
+const routeCam = { ...ROUTE_VIEW };
+const terrain = new Map();  // "x,y,z" -> [x, y, z, rgb]
+const blockRgbCache = new Map();
+const routePointers = new Map();
+let routeGl = null, terrainProg = null, terrainBuf = null, terrainCount = 0;
+let trace = [], minedBlocks = [], flyAt = null, traceLimit = Infinity;  // flyAt: [x, y, z, dx, dz]
+let terrainDirty = false, routeDirty = true, routeW = 1, routeH = 1, routeDpr = 1, routePinch = 0;
+
+const blockKey = (x, y, z) => `${x},${y},${z}`;
+function blockRgb(name) {
+  let rgb = blockRgbCache.get(name);
+  if (!rgb) {
+    const match = BLOCK_COLORS.find(([pattern]) => pattern.test(name));
+    rgb = hexRgb(match ? match[1] : OTHER_BLOCK).map(v => v / 255);
+    blockRgbCache.set(name, rgb);
+  }
+  return rgb;
+}
+function setBlock([x, y, z, name]) { terrain.set(blockKey(x, y, z), [x, y, z, blockRgb(String(name))]); }
+
+// Vertex buffer of every block face with no mapped block against it: position, colour, face corner
+function buildTerrain() {
+  terrainDirty = false;
+  const faces = [];
+  for (const block of terrain.values()) {
+    const [x, y, z] = block;
+    FACE_NORMALS.forEach(([dx, dy, dz], f) => {
+      if (!terrain.has(blockKey(x + dx, y + dy, z + dz))) faces.push(block, f);
+    });
+  }
+  const data = new Float32Array(faces.length / 2 * FACE_CORNERS.length * 8);
+  let o = 0;
+  for (let k = 0; k < faces.length; k += 2) {
+    const [x, y, z, rgb] = faces[k], normal = FACE_NORMALS[faces[k + 1]];
+    const axis = normal.findIndex(v => v !== 0);
+    const [i, j] = [0, 1, 2].filter(a => a !== axis);
+    const light = 0.5 + 0.5 * Math.max(0, normal[0] * LIGHT[0] + normal[1] * LIGHT[1] + normal[2] * LIGHT[2]);
+    const shade = light * (0.93 + 0.01 * (((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) & 7));  // a little texture
+    const base = [x, y, z];
+    if (normal[axis] > 0) base[axis] += 1;
+    for (const [ci, cj] of FACE_CORNERS) {
+      data[o + axis] = base[axis];
+      data[o + i] = base[i] + ci;
+      data[o + j] = base[j] + cj;
+      data[o + 3] = rgb[0] * shade;
+      data[o + 4] = rgb[1] * shade;
+      data[o + 5] = rgb[2] * shade;
+      data[o + 6] = ci;
+      data[o + 7] = cj;
+      o += 8;
+    }
+  }
+  routeGl.bindBuffer(routeGl.ARRAY_BUFFER, terrainBuf);
+  routeGl.bufferData(routeGl.ARRAY_BUFFER, data, routeGl.DYNAMIC_DRAW);
+  terrainCount = data.length / 8;
+}
+
+function resizeRoute() {
+  routeDpr = Math.min(window.devicePixelRatio || 1, 2);
+  routeW = Math.max(1, routeWrap.clientWidth);
+  routeH = Math.max(1, routeWrap.clientHeight);
+  for (const c of [routeCanvas, routeOverlay]) {
+    c.width = Math.round(routeW * routeDpr);
+    c.height = Math.round(routeH * routeDpr);
+  }
+  if (routeGl) routeGl.viewport(0, 0, routeCanvas.width, routeCanvas.height);
+  routeDirty = true;
+}
+
+function drawRoute() {
+  routeDirty = false;
+  // the map orbits the fly
+  const centre = flyAt ? [flyAt[0] + 0.5, flyAt[1] + 0.5, flyAt[2] + 0.5] : [0.5, 0.5, 0.5];
+  const view = makeView(centre, routeCam.yaw, routeCam.pitch, routeCam.dist, Math.min(routeW, routeH) * 1.1, routeW, routeH);
+  if (routeGl) {
+    const g = routeGl;
+    if (terrainDirty) buildTerrain();
+    g.clearColor(...glColor('--page'), 1);
+    g.clear(g.COLOR_BUFFER_BIT | g.DEPTH_BUFFER_BIT);
+    if (terrainCount) {
+      // the same camera as view, as a matrix
+      const fovy = 2 * Math.atan(routeH / 2 / view.focal);
+      const near = Math.max(0.1, routeCam.dist / 50);
+      const m = mul(perspective(fovy, routeW / routeH, near, routeCam.dist + 2000),
+        mul(translateZ(-routeCam.dist), mul(rotX(routeCam.pitch), mul(rotY(routeCam.yaw), translate(-centre[0], -centre[1], -centre[2])))));
+      g.enable(g.DEPTH_TEST);
+      g.useProgram(terrainProg);
+      g.bindBuffer(g.ARRAY_BUFFER, terrainBuf);
+      g.enableVertexAttribArray(0);
+      g.vertexAttribPointer(0, 3, g.FLOAT, false, 32, 0);
+      g.enableVertexAttribArray(1);
+      g.vertexAttribPointer(1, 3, g.FLOAT, false, 32, 12);
+      g.enableVertexAttribArray(2);
+      g.vertexAttribPointer(2, 2, g.FLOAT, false, 32, 24);
+      g.uniformMatrix4fv(terrainProg.u('uMVP'), false, m);
+      g.uniform1f(terrainProg.u('uEdge'), 0.4 * Math.max(0, Math.min(1, 1.5 - routeCam.dist / 60)));
+      g.drawArrays(g.TRIANGLES, 0, terrainCount);
+    }
+  }
+  drawRouteOverlay(view, centre);
+}
+
+function drawRouteOverlay(view, centre) {
+  const ctx = routeCtx;
+  ctx.setTransform(routeDpr, 0, 0, routeDpr, 0, 0);
+  ctx.clearRect(0, 0, routeW, routeH);
+  const page = cssVar('--page'), ink = cssVar('--ink'), ink2 = cssVar('--ink-2');
+  ctx.font = '600 11px system-ui, -apple-system, "Segoe UI", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (!flyAt) {
+    ctx.fillStyle = cssVar('--muted');
+    ctx.fillText('Nothing mapped yet: the map starts when Minecraft connects', routeW / 2, routeH / 2);
+    return;
+  }
+  const at = p => view.project(view.rotate([p[0] + 0.5, p[1] + 0.5, p[2] + 0.5]));
+
+  const reach = Math.max(3, routeCam.dist * 0.3);
+  for (const [text, dx, dz] of [['N', 0, -1], ['E', 1, 0], ['S', 0, 1], ['W', -1, 0]]) {
+    const s = view.project(view.rotate([centre[0] + dx * reach, centre[1], centre[2] + dz * reach]));
+    if (!s) continue;
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = page;
+    ctx.strokeText(text, s[0], s[1]);
+    ctx.fillStyle = ink2;
+    ctx.fillText(text, s[0], s[1]);
+  }
+
+  // A jump further than one climbing step (the Agent sent back to the player) starts a new line
+  const route = new Path2D();
+  let prev = null, prevAt = null;
+  for (const p of trace) {
+    const s = at(p);
+    const joined = s && prevAt && Math.max(...[0, 1, 2].map(k => Math.abs(p[k] - prev[k]))) <= 2;
+    if (joined) route.lineTo(s[0], s[1]);
+    else if (s) route.moveTo(s[0], s[1]);
+    prev = p;
+    prevAt = s;
+  }
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.lineWidth = 5;
+  ctx.stroke(route);
+  ctx.strokeStyle = ink;
+  ctx.lineWidth = 2;
+  ctx.stroke(route);
+
+  const start = trace.length ? at(trace[0]) : null;
+  if (start) {
+    ctx.beginPath();
+    ctx.arc(start[0], start[1], 5, 0, 2 * Math.PI);
+    ctx.fillStyle = page;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = ink2;
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = cssVar('--s5');
+  ctx.strokeStyle = page;
+  ctx.lineWidth = 1.5;
+  for (const p of minedBlocks) {
+    const s = at(p);
+    if (!s) continue;
+    const [x, y] = s;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 6);
+    ctx.lineTo(x + 6, y);
+    ctx.lineTo(x, y + 6);
+    ctx.lineTo(x - 6, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // the fly stays at least ~56 px long however far out the map is zoomed, standing on its block's floor
+  const scale = Math.max(1, 56 * routeCam.dist / view.focal);
+  drawFly(ctx, view, { at: [centre[0], flyAt[1] + 0.4 * scale, centre[2]], forward: [flyAt[3], flyAt[4]], scale });
+}
+
+function renderRouteStats() {
+  const places = trace.length;
+  $('routeStats').textContent = `${fmt.format(places)} ${places === 1 ? 'place' : 'places'} on the route · `
+    + `${fmt.format(terrain.size)} blocks mapped · ${fmt.format(minedBlocks.length)} mined`;
+}
+
+// The whole map: sent when the page opens, and after a reset
+function onMap(m) {
+  terrain.clear();
+  for (const block of m.blocks || []) setBlock(block);
+  trace = Array.isArray(m.trace) ? m.trace.slice() : [];
+  minedBlocks = Array.isArray(m.mined) ? m.mined.slice() : [];
+  flyAt = m.fly || null;
+  traceLimit = m.max_trace || Infinity;
+  terrainDirty = routeDirty = true;
+  renderRouteStats();
+}
+
+// One tick's changes; blocks before cleared, as a block mined this tick is in both
+function onMapStep(m) {
+  for (const block of m.blocks || []) setBlock(block);
+  for (const [x, y, z] of m.cleared || []) terrain.delete(blockKey(x, y, z));
+  if (m.step) {
+    trace.push(m.step);
+    if (trace.length > traceLimit) trace.splice(0, trace.length - traceLimit);
+  }
+  for (const block of m.mined || []) minedBlocks.push(block);
+  if (m.fly) flyAt = m.fly;
+  if ((m.blocks && m.blocks.length) || (m.cleared && m.cleared.length)) terrainDirty = true;
+  routeDirty = true;
+  renderRouteStats();
+}
+
+function setupRoute() {
+  routeGl = routeCanvas.getContext('webgl', { antialias: true, alpha: false });
+  try {
+    if (routeGl) {
+      terrainProg = program(routeGl, TERRAIN_VS, TERRAIN_FS, ['aPos', 'aColor', 'aUv']);
+      terrainBuf = routeGl.createBuffer();
+    }
+  } catch (err) {
+    console.error('3D terrain shaders failed:', err);
+    routeGl = null;
+  }
+  if (!routeGl) $('routeNote').hidden = false;
+  new ResizeObserver(resizeRoute).observe(routeWrap);
+  resizeRoute();
+
+  const zoom = f => { routeCam.dist = Math.max(4, Math.min(800, routeCam.dist * f)); routeDirty = true; };
+  const orbit = (dyaw, dpitch) => {
+    routeCam.yaw += dyaw;
+    routeCam.pitch = Math.max(-0.5, Math.min(1.55, routeCam.pitch + dpitch));
+    routeDirty = true;
+  };
+  routeOverlay.addEventListener('pointerdown', e => {
+    routeOverlay.setPointerCapture(e.pointerId);
+    routePointers.set(e.pointerId, [e.clientX, e.clientY]);
+    routeOverlay.classList.add('dragging');
+    if (routePointers.size === 2) {
+      const [a, b] = [...routePointers.values()];
+      routePinch = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    }
+  });
+  routeOverlay.addEventListener('pointermove', e => {
+    const prev = routePointers.get(e.pointerId);
+    if (!prev) return;
+    routePointers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (routePointers.size === 2) {
+      const [a, b] = [...routePointers.values()];
+      const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      if (routePinch > 0 && d > 0) zoom(routePinch / d);
+      routePinch = d;
+    } else {
+      orbit((e.clientX - prev[0]) * 0.008, (e.clientY - prev[1]) * 0.008);
+    }
+  });
+  const release = e => {
+    routePointers.delete(e.pointerId);
+    if (routePointers.size < 2) routePinch = 0;
+    if (!routePointers.size) routeOverlay.classList.remove('dragging');
+  };
+  routeOverlay.addEventListener('pointerup', release);
+  routeOverlay.addEventListener('pointercancel', release);
+  routeOverlay.addEventListener('wheel', e => {
+    e.preventDefault();
+    zoom(Math.exp(e.deltaY * 0.0015));
+  }, { passive: false });
+  routeOverlay.addEventListener('dblclick', () => { Object.assign(routeCam, ROUTE_VIEW); routeDirty = true; });
+  routeOverlay.addEventListener('keydown', e => {
+    const turn = { ArrowLeft: [-0.15, 0], ArrowRight: [0.15, 0], ArrowUp: [0, -0.15], ArrowDown: [0, 0.15] }[e.key];
+    const factor = { '+': 1 / 1.25, '=': 1 / 1.25, '-': 1.25, _: 1.25 }[e.key];
+    if (!turn && !factor) return;
+    e.preventDefault();
+    if (turn) orbit(...turn);
+    else zoom(factor);
+  });
+
+  const legend = $('routeLegend');
+  const entry = (key, text) => {
+    const item = el('span', 'legend-item');
+    item.append(key, text);
+    legend.append(item);
+  };
+  entry(el('span', 'key-route'), 'Route');
+  entry(el('span', 'key-ring'), 'Start');
+  entry(el('span', 'key-mined'), 'Block it mined');
+  const flyKey = el('span', 'key-block');
+  flyKey.style.background = `linear-gradient(90deg, ${FLY.eye} 30%, ${FLY.thorax} 30%)`;
+  entry(flyKey, 'The fly now');
+  const terrainKey = el('span', 'key-block');
+  const hex = name => (BLOCK_COLORS.find(([pattern]) => pattern.test(name)) || [null, OTHER_BLOCK])[1];
+  terrainKey.style.background = `linear-gradient(90deg, ${hex('grass_block')} 33%, ${hex('sand')} 33% 66%, ${hex('stone')} 66%)`;
+  entry(terrainKey, 'Terrain it sensed, in block colours');
+  legend.append(el('span', 'legend-item legend-hint', 'N marks north. Drag or arrow keys to rotate, scroll or +/− to zoom, double-click to reset'));
+  renderRouteStats();
 }
 
 function renderSenses(t) {
@@ -1433,9 +1833,9 @@ function onTick(t) {
   $('collectedSub').textContent = collected.length
     ? collected.slice(0, 3).map(([name, n]) => `${fmt.format(n)} ${prettyBlock(name).toLowerCase()}`).join(' · ')
     : 'blocks mined and picked up';
-  const speed = seconds / t.think_s;
-  $('speedValue').textContent = `${speed.toFixed(2)}× realtime`;
-  $('speedSub').textContent = `${t.tick_ms} ms of brain time in ${t.think_s.toFixed(2)} s`;
+  const speed = 100 * seconds / t.think_s;  // percent of realtime: 100% is a fly's own brain speed
+  $('speedValue').textContent = `${speed >= 10 ? Math.round(speed) : speed.toFixed(1)}%`;
+  $('speedSub').textContent = `of realtime · ${t.tick_ms} ms of brain time in ${t.think_s.toFixed(2)} s`;
   $('thresholdText').textContent = `${t.threshold_hz} Hz`;
 
   renderSenses(t);
@@ -1486,7 +1886,11 @@ function setPill(id, cls, icon, text) {
   pill.querySelector('.text').textContent = text;
 }
 
+let gamePort = null;
+
 function onStatus(s) {
+  if (s.port) gamePort = s.port;
+  if (s.connected) $('resetNote').textContent = '';
   if (!s.connected) setPill('gamePill', 'muted', '○', 'Waiting for Minecraft');
   else if (s.paused) setPill('gamePill', 'muted', 'Ⅱ', 'Paused (chat "fly resume")');
   else setPill('gamePill', 'good', '●', 'Minecraft connected');
@@ -1529,20 +1933,76 @@ seekSelect.addEventListener('change', () => {
   }
 });
 
+// ---------- reset ----------
+const resetButton = $('resetButton');
+const resetNote = $('resetNote');
+
+resetButton.addEventListener('click', () => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  if (!confirm('Disconnect Minecraft and start again? This clears the map, the collected blocks and the brain.')) return;
+  socket.send(JSON.stringify({ type: 'reset' }));
+  resetButton.disabled = true;
+  resetNote.textContent = 'Resetting…';
+});
+
+// The server has disconnected the game and forgotten its ticks: clear every panel (the map comes separately)
+function onReset() {
+  latest = null;
+  history.length = 0;
+  strip.length = 0;
+  for (const i of prevFired) lastSpikes[i] = 0;
+  prevFired = [];
+  for (const i of activeList) {
+    heat[i] = 0;
+    activeFlag[i] = 0;
+    if (slotOf && slotOf[i] >= 0) heatV[slotOf[i]] = 0;
+  }
+  activeList.length = 0;
+  markCount = 0;
+  labelTarget = null;
+  heatDirty = drawDirty = true;
+
+  $('actionValue').textContent = '—';
+  $('actionSwatch').style.background = '';
+  $('actionSub').textContent = 'Waiting for the first brain tick';
+  $('activeValue').textContent = '—';
+  $('activeSub').textContent = '';
+  $('carriedValue').textContent = '—';
+  $('collectedSub').textContent = 'blocks mined and picked up';
+  $('speedValue').textContent = '—';
+  $('speedSub').textContent = '';
+  renderSenses(null);
+  for (const id of ['motorBars', 'inputBars', 'classBars']) $(id).replaceChildren(el('div', 'empty-note', 'No ticks yet'));
+  lines.replaceChildren();
+  renderSpark();
+  renderStrip();
+  $('tables').replaceChildren();
+
+  resetButton.disabled = !(socket && socket.readyState === WebSocket.OPEN);
+  resetNote.textContent = `Reset. Type /connect localhost:${gamePort || 8080} in Minecraft to start again.`;
+}
+
 function connect() {
   const ws = new WebSocket(`ws://${location.host}/ws`);
   socket = ws;
-  ws.onopen = () => setPill('linkPill', 'good', '✓', 'Live');
+  ws.onopen = () => {
+    setPill('linkPill', 'good', '✓', 'Live');
+    resetButton.disabled = false;
+  };
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
     if (m.type === 'tick') onTick(m);
     else if (m.type === 'history') onHistory(m.ticks);
     else if (m.type === 'status') onStatus(m);
     else if (m.type === 'seek') onSeek(m);
+    else if (m.type === 'map') onMap(m);
+    else if (m.type === 'map_step') onMapStep(m);
+    else if (m.type === 'reset') onReset();
   };
   ws.onclose = () => {
     if (socket === ws) socket = null;
     seekSelect.disabled = true;
+    resetButton.disabled = true;
     setPill('linkPill', 'critical', '!', 'Server offline, retrying');
     setPill('gamePill', 'muted', '○', 'Waiting for Minecraft');
     setTimeout(connect, 2000);
@@ -1552,6 +2012,7 @@ function connect() {
 async function init() {
   renderLegend();
   setupCube();
+  setupRoute();
   renderSenses(null);
   const response = await fetch('layout.json');
   layout = await response.json();

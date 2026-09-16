@@ -39,6 +39,10 @@ calibrated baseline and `--threshold_hz`) is performed.
 | **Drive:** player more than 10 blocks away | DNa01/DNa02 steering neurons on the player's side (right if behind), 35 Hz; rests for 3 ticks after each turn so the fly walks a staircase towards the player instead of flipping left and right |
 | **Drive:** nothing solid below, and not still blocked | MDN (moonwalker) neurons, 40 Hz |
 | **Drive:** a sought block seen more than 45° off course (on a diagonal of the cube around the fly, or scanned every 3 ticks at 2, 3 and 5 blocks in 8 directions) | DNa01/DNa02 steering neurons on that side, 35 Hz, with the same 3-tick rest; homing to the player takes priority |
+| **Drive:** nothing to chase and the player near: it holds one compass heading for 45 ticks, then another (menotaxis, see below) | DNa01/DNa02 steering neurons on the side that turns it back onto that heading, 35 Hz; seeking and homing both take priority |
+| Dark, from `time query daytime` | Clock neurons (l-LNv, s-LNv, LNd, DN1), 30 Hz |
+| Every tick it is awake | ER5 ring neurons, up to 100 Hz as sleep pressure builds |
+| **Drive:** asleep — dark, and awake for 40 ticks | Dorsal fan-shaped body sleep neurons (the 23E10 types), 100 Hz; every drive and the sweet taste switch off until it wakes (see below) |
 
 Game senses are read with `testfor` target selectors around the Agent (mobs,
 dropped items, the player's side) and `time query daytime`, run concurrently with
@@ -68,6 +72,68 @@ turning (most odours, temperature, humidity) and giant-fibre takeoff (auditory).
 Without a drive the fly only turns and eats in place, so a steady walking drive
 and a carried-blocks egg-laying drive stand in for motivation. Everything else
 is the brain.
+
+### Searching new ground
+
+A fly has no map of where it has been. It reaches new ground by **menotaxis**:
+holding one arbitrary compass heading and walking it, then taking another. So when
+there is nothing to chase, the fly holds a heading for 45 ticks, and picks a
+different one when the bout ends or when four moves in a row are blocked.
+
+That heading is kept in `body.py` rather than in the brain, because this model
+cannot hold one:
+
+- **No activity outlives its input.** Driving a wedge of E-PG compass neurons at
+  200 Hz gives 210 Hz in that wedge; 200 ms after the drive stops they are at
+  1.9 Hz, and by 400 ms at 0 Hz, along with PEN, PEG and Delta7. A fly carries its
+  heading as a bump of activity that persists on its own, and nothing here does.
+  Nothing can be learned into the weights either: they are static, so the ring
+  neurons that give a fly visual place learning have nothing to learn with.
+- **The goal cells cannot steer by themselves.** Driving FC2 (the goal-direction
+  cells) on one side never wins a turn, and the side it turns flips with the dose:
+  FC2 left at 35 Hz gives turn-right 10 Hz, at 100 Hz turn-left 10 Hz, at 200 Hz
+  turn-left 4 Hz. PFL3 steers by comparing that goal against the E-PG heading bump,
+  and with no bump there is nothing to compare against. Driving DNa01/DNa02
+  directly, as every other drive does, gives a clean 32 Hz turn.
+
+So the heading joins seeking and homing on the same steering neurons, and the
+turning still comes out of the connectome.
+
+Measured against a scripted stand-in for the game, 150 s a run: with nothing to
+seek, the fly walked 141 steps over 136 distinct ground cells, covering 48 × 39
+blocks and reaching 80 blocks from where it started, re-walking only 4% of its
+steps. With sand to seek it stays and mines as it did before (12 steps, 10 blocks
+out; 24 steps and 13 blocks out without the heading drive) — seeking and homing
+outrank the heading, so this only changes what the fly does with nothing to chase.
+
+### Sleeping at night
+
+Flies sleep, and the game already tells this one the time of day. Three real
+circuits are wired up: the **clock neurons** (48: l-LNv, s-LNv, LNd, DN1), the
+**ER5** ring neurons that carry sleep pressure (21), and the **dorsal fan-shaped
+body** sleep neurons (35, the 23E10 types this table names). Sleep pressure builds
+every tick the fly is awake; once the clock says it is dark and the fly has been
+awake for 40 ticks, it settles. Light wakes it, and so does a thud or a hostile mob,
+as a sleeping fly is still woken by a strong enough knock.
+
+While it sleeps its drives are withdrawn — walking, seeking, homing, the heading it
+was holding, and the sweet taste of the block it seeks — so nothing reaches the
+threshold and the fly rests where it is. Its senses keep arriving, which is what
+lets a mob or a bump wake it.
+
+The drives are withdrawn because, in this model, the sleep neurons cannot do it.
+Driving the fan-shaped body at 100 and 200 Hz, ER5 at 100 Hz, the clock at 100 Hz,
+or all three at once never changed the chosen action: it stayed forward walking, at
+25–35 Hz above baseline in every case, and with sugar present the fly still fed
+(131 Hz awake, 104 Hz with the sleep neurons driven hard). A fly's sleep rests on
+neuromodulation and slow processes that a leaky integrate-and-fire model with fixed
+weights does not have. So the state is kept in `body.py`, like the heading, while the
+neurons themselves are still driven and still show on the page.
+
+Measured against the scripted stand-in, with the clock raced through a whole day:
+the fly settled once it was dark and had been awake 60 ticks, spent the night idle
+with every motor pool at zero — not feeding, though a block of the sand it seeks was
+against its face — and woke when it grew light, feeding again on the next tick.
 
 ### What it does (5 × 200 ms ticks per situation, full brain)
 
@@ -147,6 +213,17 @@ game facts (player, mobs, items, footing, time); the input rate into each
 sensory group and drive; the motor pool scores that pick each command; and the
 history of decisions. It updates every tick.
 
+The **Where the fly has been** map shows the Minecraft world in 3D: the route the
+fly has walked (a white line from a ringed start), the terrain it has sensed on
+the way in block colours, and a pink diamond for each block it mined, with the fly
+itself at the head of the route, facing the way it faces. The map follows the fly;
+drag to rotate, scroll to zoom, and N marks north. It only holds the blocks the
+fly has sensed around it, so it grows as the fly explores.
+
+**Reset** disconnects Minecraft, rests the brain, and clears the map, the collected
+blocks and every panel, without restarting the server. Type `/connect localhost:8080`
+in the game to start again.
+
 If `/connect localhost` cannot reach the server, Windows may be blocking the
 app from connecting to localhost. From an administrator prompt:
 
@@ -156,9 +233,27 @@ CheckNetIsolation LoopbackExempt -a -n=Microsoft.MinecraftEducationEdition_8weky
 
 ### Speed
 
-One brain simulates at about 0.13× realtime on an RTX 3070: a 200 ms tick
-takes ~1.6 s, so the Agent acts roughly every 2 s. `--tick_ms 100` halves that
-at the cost of noisier decisions. (CUDA graphs were tried: only 1.3× faster.)
+One brain simulates at about **31% of realtime** on an RTX 3070: a 200 ms tick
+takes ~0.65 s, so the Agent acts roughly every second. The page's **Brain speed**
+tile shows this live, as a percentage of a real fly's brain. `--tick_ms 100`
+halves the wait per decision, at the cost of noisier decisions.
+
+Two things make that speed, both in `brain.py` and both exact — the maths is
+unchanged, only the work is:
+
+- **Gathering spikes instead of multiplying the connectome.** About 3 of 138,639
+  neurons spike in a 0.1 ms step, so `W @ spikes` reads all 15 million edges to
+  add up ~1,000 numbers. `GatherModel` indexes the edges by the neuron they leave
+  and sums only those, edge for edge: the same result to the last float, measured.
+- **Capturing the step as a CUDA graph.** A step is ~30 tiny GPU kernels, each
+  costing more to launch than to run. Captured once and replayed, the launches go.
+
+Measured per 0.1 ms step: 1.21 ms as written (8% of realtime), 0.79 ms with the
+graph alone (13%), 0.33 ms with both (31%). Spikes per step are the same either
+way (2.94). The gather keeps a fixed budget of edge slots so its shapes suit a
+graph; if a step ever needs more, the brain rewinds, widens the budget and runs
+that tick again, so a burst cannot quietly lose edges. Calibration runs ten
+brains at once and keeps the plain matrix path.
 
 ## Layout
 
@@ -168,6 +263,7 @@ flyminecraft/
   neurons.py     sensory, drive and motor neuron groups from the FlyWire annotation table
   brain.py       LiveBrain: fly-brain's PyTorch LIF model, stepped continuously
   body.py        Agent senses -> input rates; motor rates -> Agent commands
+  worldmap.py    the fly's route, the terrain it sensed and the blocks it mined, for the page's map
   minecraft.py   Minecraft websocket protocol (commands, events)
   calibrate.py   probe motor responses to each sense; writes data/calibration.json
   dashboard.py   live brain web page server (layout + per-tick websocket feed)

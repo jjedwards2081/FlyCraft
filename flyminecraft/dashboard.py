@@ -66,23 +66,35 @@ def build_layout(annotations, flyid2i, num_neurons, inputs, motors, input_labels
 
 
 class Dashboard:
-    def __init__(self, layout, on_message=None):
-        """on_message(dict) receives JSON objects sent by pages, e.g. the chosen block to seek."""
+    def __init__(self, layout, on_message=None, on_open=None):
+        """on_message(dict) receives JSON objects sent by pages, e.g. the chosen block to seek.
+
+        on_open() returns messages that bring a newly opened page up to date, e.g. the whole map.
+        """
         self._on_message = on_message
+        self._on_open = on_open
         self._page = PAGE.read_bytes()
         self._layout = json.dumps(layout, separators=(',', ':')).encode()
         self._clients = set()
         self._latest = {}  # message type -> last message, replayed to pages that open later
         self._history = deque(maxlen=HISTORY)
 
-    def publish(self, message):
+    def publish(self, message, replay=True):
+        """Send to every page. replay=False for changes that only apply on top of on_open's messages."""
         text = json.dumps(message, separators=(',', ':'))
         if message['type'] == 'tick':
             summary = {k: v for k, v in message.items() if k not in ('fired', 'spike_counts')}
             summary['active'] = len(message['fired'])
             self._history.append(summary)
-        self._latest[message['type']] = text
+        if replay:
+            self._latest[message['type']] = text
         broadcast(self._clients, text)
+
+    def reset(self):
+        """Forget the ticks so far, and tell pages to clear them."""
+        self._history.clear()
+        self._latest.pop('tick', None)
+        self.publish({'type': 'reset'}, replay=False)
 
     def _http(self, connection, request):
         path = request.path.split('?', 1)[0]
@@ -105,7 +117,12 @@ class Dashboard:
                                      separators=(',', ':')))
             for text in self._latest.values():
                 await ws.send(text)
+            # No await between building these and joining, and send writes before it yields,
+            # so every later change reaches this page after them
+            opening = [json.dumps(m, separators=(',', ':')) for m in self._on_open()] if self._on_open else []
             self._clients.add(ws)
+            for text in opening:
+                await ws.send(text)
             async for raw in ws:
                 try:
                     message = json.loads(raw)

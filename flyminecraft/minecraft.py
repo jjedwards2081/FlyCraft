@@ -44,15 +44,22 @@ class MinecraftClient:
             future.set_result(body)
 
     async def _send(self, purpose, body, request_id=None):
-        await self.ws.send(json.dumps({
-            'header': {
-                'version': 1,
-                'requestId': request_id or str(uuid.uuid4()),
-                'messageType': 'commandRequest',
-                'messagePurpose': purpose,
-            },
-            'body': body,
-        }))
+        try:
+            await self.ws.send(json.dumps({
+                'header': {
+                    'version': 1,
+                    'requestId': request_id or str(uuid.uuid4()),
+                    'messageType': 'commandRequest',
+                    'messagePurpose': purpose,
+                },
+                'body': body,
+            }))
+        except ConnectionClosed as e:
+            raise ConnectionError('Minecraft disconnected') from e
+
+    async def close(self):
+        """Disconnect the game; it can /connect again."""
+        await self.ws.close()
 
     async def command(self, line, timeout=10.0):
         """Run a command and return the response body (statusCode < 0 means it failed)."""
@@ -93,12 +100,22 @@ async def run_server(host, port, on_connect):
         async with busy:
             client = MinecraftClient(ws)
             listener = asyncio.create_task(client.listen())
+            fly = asyncio.create_task(on_connect(client))
             try:
-                await on_connect(client)
-            except ConnectionError as e:
-                log.info('%s', e)
+                # Stop as soon as the game goes, even while the fly is paused and sending nothing
+                await asyncio.wait((listener, fly), return_when=asyncio.FIRST_COMPLETED)
             finally:
                 listener.cancel()
+                fly.cancel()
+            try:
+                await fly
+            except asyncio.CancelledError:
+                log.info('Minecraft disconnected')
+            except ConnectionError as e:
+                log.info('%s', e)
+            except TimeoutError:
+                log.warning('Minecraft stopped answering; dropping the connection. '
+                            'Type  /connect localhost:%d  in the game chat to start again', port)
 
     # Minecraft does not reliably answer websocket pings
     async with serve(handler, host, port, ping_interval=None) as server:
